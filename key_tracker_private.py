@@ -15,6 +15,8 @@ class PrivateKeyTracker:
 
     Attributes
     ----------
+    start_datetime : str
+        The date and time at which the current session starts
     start_time : float
         The timestamp at which the current session starts
     end_time : float
@@ -23,6 +25,10 @@ class PrivateKeyTracker:
         The file of designated log output, opened with overwrite permission
     summary_file : TextIOWrapper
         The file of designated summary output, opened with overwrite permission
+    is_last_action_release : bool
+        Whether the last action is release or not
+    last_pressed_key : pynput.keyboard.Key
+        The last key pressed
     last_pressed_time : float
         The timestamp at which the last key was pressed at any given time 
         during session
@@ -49,6 +55,7 @@ class PrivateKeyTracker:
         self.log_file = open('outputs/' + log_filename, 'w+')
         self.summary_file = open('outputs/' + summary_filename, 'w+')
         
+        self.is_last_action_release = True
         self.last_pressed_time: dict[Key, float] = {}
         self.key_press_spans: dict[str, list[float]] = {
             'alphanumeric': [],
@@ -67,7 +74,14 @@ class PrivateKeyTracker:
             The key pressed
         """
 
-        self.last_pressed_time[key] = time.time()
+        # Only update last_pressed_time[key] if following a release action or if
+        # last key pressed is not the current key pressed. In other words, in 
+        # the event where the current key was pressed last and not released, do 
+        # not update its last pressed time value and instead count it as a 
+        # continued key press. 
+        if self.is_last_action_release or self.last_pressed_key != key:
+            self.last_pressed_time[key] = time.time()
+        self.last_pressed_key = key
 
         try:
             # Do NOT output this value, in order to preserve user privacy
@@ -80,6 +94,7 @@ class PrivateKeyTracker:
                 print('delete key pressed')
             else:
                 print('special key pressed')
+        self.is_last_action_release = False
 
     def __on_release(self, key: Key):
         """
@@ -113,6 +128,8 @@ class PrivateKeyTracker:
                 self.key_press_spans['other special'].append(key_press_span)
                 self.log_file.write('some other special, %f\n' % key_press_span)
         
+        self.is_last_action_release = True
+
         if key == Key.esc:
             # close log file
             self.log_file.close()
@@ -129,6 +146,7 @@ class PrivateKeyTracker:
             mean_key_press_span: float = np.average(list(chain.from_iterable(self.key_press_spans.values())))
 
             # write summary of session
+            self.summary_file.write('session started at %s\n' % self.start_datetime)
             self.summary_file.write('session length is %f seconds\n' % (self.end_time - self.start_time))
             self.summary_file.write('alphanumeric keys pressed %d times\n' % count_alphanumeric)
             self.summary_file.write('backspace key pressed %d times\n' % count_backspace)
