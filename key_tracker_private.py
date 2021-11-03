@@ -106,7 +106,12 @@ class PrivateKeyTracker:
             The key released
         """
 
-        key_press_span = time.time() - self.last_pressed_time[key]
+        if key in self.last_pressed_time:
+            key_press_span = time.time() - self.last_pressed_time[key]
+        else:
+            # Occurs when typing very fast and previous release processing is 
+            # not yet finished
+            key_press_span = 0
 
         try:
             # Do NOT output this value, in order to preserve user privacy
