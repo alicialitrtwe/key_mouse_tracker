@@ -1,5 +1,9 @@
 from pynput.keyboard import Key, Listener
 
+"""
+WARNING: THIS FILE IS NOT INTENDED TO BE USED, AS IT DOES NOT PROTECT USER PRIVACY.
+"""
+
 def on_press(key):
     try:
         print('alphanumeric key {0} pressed'.format(key.char))
