@@ -151,22 +151,38 @@ during session
                 count_backspace = len(self.key_press_spans['backspace'])
                 count_delete = len(self.key_press_spans['delete'])
                 count_other_special = len(self.key_press_spans['other special'])
-                count_total = count_alphanumeric + count_backspace + count_delete + count_other_special
-                ratio_error_to_total = (count_backspace + count_delete) / count_total
+                count_total = (
+                    count_alphanumeric + 
+                    count_backspace + 
+                    count_delete + 
+                    count_other_special)
+                ratio_error_to_total = (
+                    (count_backspace + count_delete) / count_total)
 
                 # join press spans for all types of keys, then compute average
-                mean_key_press_span: float = np.average(list(chain.from_iterable(self.key_press_spans.values())))
+                mean_key_press_span: float = np.average(
+                    list(chain.from_iterable(self.key_press_spans.values())))
 
                 # write summary of session
-                self.summary_file.write('session started at %s\n' % self.start_datetime)
-                self.summary_file.write('session length is %f seconds\n' % (self.end_time - self.start_time))
-                self.summary_file.write('alphanumeric keys pressed %d times\n' % count_alphanumeric)
-                self.summary_file.write('backspace key pressed %d times\n' % count_backspace)
-                self.summary_file.write('delete key pressed %d times\n' % count_delete)
-                self.summary_file.write('other special keys pressed %d times\n' % count_other_special)
-                self.summary_file.write('total keys pressed %d times\n' % count_total)
-                self.summary_file.write('error to total ratio is %f\n' % ratio_error_to_total)
-                self.summary_file.write('average key press span is %f seconds\n' % mean_key_press_span)
+                self.summary_file.write(
+                    'session started at %s\n' % self.start_datetime)
+                self.summary_file.write(
+                    'session length is %f seconds\n' 
+                    % (self.end_time - self.start_time))
+                self.summary_file.write(
+                    'alphanumeric keys pressed %d times\n' % count_alphanumeric)
+                self.summary_file.write(
+                    'backspace key pressed %d times\n' % count_backspace)
+                self.summary_file.write(
+                    'delete key pressed %d times\n' % count_delete)
+                self.summary_file.write(
+                    'other special keys pressed %d times\n' % count_other_special)
+                self.summary_file.write(
+                    'total keys pressed %d times\n' % count_total)
+                self.summary_file.write(
+                    'error to total ratio is %f\n' % ratio_error_to_total)
+                self.summary_file.write(
+                    'average key press span is %f seconds\n' % mean_key_press_span)
 
                 self.summary_file.close()
 
