@@ -208,14 +208,15 @@ class KeyTrackerPrivate:
         self._lock.acquire() # guarantee ongoing press/release actions complete
 
         try:
-            key_press_span = time.time() - self._last_pressed_time[key]
+            now = time.time()
+            key_press_span = now - self._last_pressed_time[key]
 
             for key_type, is_key_type in KEY_TYPE_CONDS.items():
                 if is_key_type(key):
                     print('%s key released' % key_type)
                     self._key_press_spans[key_type].append(key_press_span)
                     self._log_file.write(
-                        '%s, %f\n' % (key_type, key_press_span))
+                        '%s, %f, %f\n' % (key_type, key_press_span, now))
             
             self._is_last_action_release = True
 
