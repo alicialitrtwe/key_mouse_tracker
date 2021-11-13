@@ -102,10 +102,10 @@ class KeyTrackerPrivate:
 
         self.start_time = time.time()
         self.start_datetime = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-        log_filename = 'log_' + self.start_datetime
-        summary_filename = 'summary_' + self.start_datetime
-        self._log_file = open('outputs/' + log_filename, 'w+')
-        self._summary_file = open('outputs/' + summary_filename, 'w+')
+        log_filename = 'outputs/log_' + self.start_datetime
+        summary_filename = 'outputs/summary_' + self.start_datetime
+        self._log_file = open(log_filename, 'w+')
+        self._summary_file = open(summary_filename, 'w+')
 
         self.stopped = False
         self._is_last_action_release = True
@@ -160,6 +160,9 @@ class KeyTrackerPrivate:
             'average key press span is %f seconds\n' % mean_key_press_span)
 
         self._summary_file.close()
+
+        # TODO
+        self._upload_logs()
 
 
     def _on_press(self, key: Key):
@@ -235,6 +238,15 @@ class KeyTrackerPrivate:
             self._lock.release()
     
 
+    def _upload_logs(self):
+        """
+        Upload the log files to designated cloud storage.
+        Currently not implemented. TODO
+        """
+        
+        pass
+
+
     def start(self):
         """
         Starts a session, which can be terminated with 'esc' key.
@@ -297,6 +309,7 @@ def run_cron():
     counter_seconds = DELAY_HOURS * SECONDS_IN_HOUR
     while counter_seconds:
         time.sleep(1)
+        counter_seconds -= 1
 
         if tracker.stopped:
             # exit while loop to exit thread
