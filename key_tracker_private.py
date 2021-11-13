@@ -5,11 +5,17 @@ import numpy as np
 from itertools import chain
 import os
 import threading
-import schedule
 
 
 
-class PrivateKeyTracker:
+DELAY_HOURS = 6
+"""
+Number of hours for each session's length.
+"""
+
+
+
+class KeyTrackerPrivate:
     """
     A key tracker which identifies 'backspace' and 'delete' keys only and groups 
     other keys into 'alphanumeric' or 'special' keys. The tracker outputs the 
@@ -25,6 +31,8 @@ class PrivateKeyTracker:
         The timestamp at which the current session starts
     end_time : float
         The timestamp at which the current session ends
+    stopped : bool
+        Whether the tracker has been stopped
     _log_file : TextIOWrapper
         The file of designated log output, opened with overwrite permission
     _summary_file : TextIOWrapper
@@ -47,6 +55,7 @@ class PrivateKeyTracker:
         Starts the tracker, which can be terminated with 'esc' key
     """
 
+
     def __init__(self):
         # create output directory
         output_dir = os.path.join(os.getcwd(), r'outputs')
@@ -56,15 +65,7 @@ class PrivateKeyTracker:
         self._lock = threading.Lock()
 
         self._start_session()
-
-        schedule.every().minute.at(':17').do(self.cron_new_session)
-
-        # FIXME: this is blocking right now - change to non-blocking
-        while True:
-            time.sleep(1)
-            schedule.run_pending()
             
-
 
     def _start_session(self):
         """
@@ -78,6 +79,7 @@ class PrivateKeyTracker:
         self._log_file = open('outputs/' + log_filename, 'w+')
         self._summary_file = open('outputs/' + summary_filename, 'w+')
 
+        self.stopped = False
         self._is_last_action_release = True
         self._last_pressed_time: dict[Key, float] = {}
         self._key_press_spans: dict[str, list[float]] = {
@@ -109,6 +111,7 @@ class PrivateKeyTracker:
             ratio_error_to_total = (
                 (count_backspace + count_delete) / count_total)
         else:
+            # avoid zero division in case no keys pressed in session
             ratio_error_to_total = float('nan')
 
         # join press spans for all types of keys, then compute average
@@ -149,20 +152,20 @@ class PrivateKeyTracker:
             The key pressed
         """
 
-        self._lock.acquire() # guarantee ongoing press and release actions complete
+        self._lock.acquire() # guarantee ongoing press/release actions complete
 
         try:
-            # Only update last_pressed_time[key] if following a release action or if
-            # last key pressed is not the current key pressed. In other words, in 
-            # the event where the current key was pressed last and not released, do 
-            # not update its last pressed time value and instead count it as a 
-            # continued key press. 
+            # Only update last_pressed_time[key] if following a release action 
+            # or if last key pressed is not the current key pressed. In other 
+            # words, in the event where the current key was pressed last and not 
+            # released, do not update its last pressed time value and instead 
+            # count it as a continued key press. 
             if self._is_last_action_release or self.last_pressed_key != key:
                 self._last_pressed_time[key] = time.time()
             self.last_pressed_key = key
 
             try:
-                # Do NOT output this value, in order to preserve user privacy
+                # do NOT output this value, in order to preserve user privacy
                 _x = key.char    
                 print('alphanumeric key pressed')
             except AttributeError: # special key, no char value
@@ -189,17 +192,17 @@ class PrivateKeyTracker:
             The key released
         """
 
-        self._lock.acquire() # guarantee ongoing press and release actions complete
+        self._lock.acquire() # guarantee ongoing press/release actions complete
 
         try:
             key_press_span = time.time() - self._last_pressed_time[key]
 
             try:
-                # Do NOT output this value, in order to preserve user privacy
+                # do NOT output this value, in order to preserve user privacy
                 _x = key.char    
                 print('alphanumeric key released')
                 self._key_press_spans['alphanumeric'].append(key_press_span)
-                self._log_file.write('some alphanumeric, %f\n' % key_press_span)
+                self._log_file.write('alphanumeric, %f\n' % key_press_span)
             except AttributeError: # special key, no char value
                 if key == Key.backspace:
                     print('backspace key released')
@@ -212,7 +215,7 @@ class PrivateKeyTracker:
                 else:
                     print('special key released')
                     self._key_press_spans['other special'].append(key_press_span)
-                    self._log_file.write('some other special, %f\n' % key_press_span)
+                    self._log_file.write('other special, %f\n' % key_press_span)
             
             self._is_last_action_release = True
 
@@ -220,6 +223,7 @@ class PrivateKeyTracker:
                 self._end_session()
 
                 # stop listener
+                self.stopped = True
                 return False
 
         except KeyError:
@@ -235,6 +239,10 @@ class PrivateKeyTracker:
         Starts a session, which can be terminated with 'esc' key.
         """
 
+        print('\n###############')
+        print('TRACKING STARTS')
+        print('###############\n')
+
         self.listener = Listener(
             on_press=self._on_press,
             on_release=self._on_release)
@@ -243,13 +251,16 @@ class PrivateKeyTracker:
         self.listener.join()
     
     
-    def cron_new_session(self):
+    def cron_renew_session(self):
         """
         End current session and start a new one. To be used as a cron job.
         """
 
-        print('entered cron new session')
-        self._lock.acquire() # to not collide with a key press or release
+        print('\n###################')
+        print('NEW SESSION ENTERED')
+        print('###################\n')
+
+        self._lock.acquire() # to avoid collision with a key press or release
 
         try:
             self._end_session()
@@ -260,5 +271,52 @@ class PrivateKeyTracker:
 
 
 
-tracker = PrivateKeyTracker()
-tracker.start()
+tracker = KeyTrackerPrivate() # create a new tracker
+
+
+def run_main():
+    """
+    Start the tracker.
+    """
+
+    print('starting main thread')
+    tracker.start()
+    print('ending main thread')
+
+
+def run_cron():
+    """
+    Start timer for renewing sessions.
+    """
+
+    print('starting cron thread')
+
+    # Using minute as unit for counter here because we want to check frequently
+    # whether the main thread for tracking has exited.
+    counter_minutes = DELAY_HOURS * 60
+    while counter_minutes:
+        if tracker.stopped:
+            break
+
+        time.sleep(60) # seconds in a minute
+        counter_minutes -= 1
+        if not counter_minutes:
+            # start new session and reset counter
+            tracker.cron_renew_session()
+            counter_minutes = DELAY_HOURS * 60
+
+    print('ending cron thread')
+
+
+main_thread = threading.Thread(target=run_main, name='t1')
+cron_thread = threading.Thread(target=run_cron, name='t2')
+
+main_thread.start()
+cron_thread.start()
+
+main_thread.join()
+cron_thread.join()
+
+print('\n#############')
+print('TRACKING ENDS')
+print('#############\n')
