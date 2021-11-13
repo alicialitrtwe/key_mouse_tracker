@@ -188,6 +188,9 @@ during session
 
                 # stop listener
                 return False
+        except KeyError:
+            # overlapped keys, so we pass
+            pass
         finally:
             self.lock.release()
     
