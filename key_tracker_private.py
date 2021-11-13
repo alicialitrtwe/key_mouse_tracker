@@ -1,3 +1,4 @@
+from typing import Callable, Dict
 from pynput.keyboard import Key, Listener
 import time
 from datetime import datetime
@@ -13,13 +14,38 @@ DELAY_HOURS = 6
 Number of hours for each session's length.
 """
 
+SECONDS_IN_HOUR = 3600
+"""
+Number of seconds in an hour.
+"""
+
+ERROR_KEY_TYPES = [
+    'backspace',
+    'delete'
+]
+"""
+Key types associated with making a typo/error.
+"""
+
+KEY_TYPE_CONDS: Dict[str, Callable[[Key], bool]] = {
+    'alphanumeric': lambda key: hasattr(key, 'char'),
+    'backspace': lambda key: key == Key.backspace,
+    'delete': lambda key: key == Key.delete,
+    'other special': lambda key: (not hasattr(key, 'char') 
+                                        and key != Key.backspace 
+                                        and key != Key.delete)
+}
+"""
+Key types of interest along with their differentiator function.
+"""
+
 
 
 class KeyTrackerPrivate:
     """
     A key tracker which identifies 'backspace' and 'delete' keys only and groups 
-    other keys into 'alphanumeric' or 'special' keys. The tracker outputs the 
-    log and summary of tracking sessions in a directory named 'outputs'.
+    other keys into 'alphanumeric' or 'other special' keys. The tracker outputs 
+    the log and summary of tracking sessions in a directory named 'outputs'.
     
     ...
 
@@ -53,6 +79,8 @@ class KeyTrackerPrivate:
     -------
     start()
         Starts the tracker, which can be terminated with 'esc' key
+    cron_new_session()
+        End current session and start a new one. To be used as a cron job.
     """
 
 
@@ -83,10 +111,7 @@ class KeyTrackerPrivate:
         self._is_last_action_release = True
         self._last_pressed_time: dict[Key, float] = {}
         self._key_press_spans: dict[str, list[float]] = {
-            'alphanumeric': [],
-            'backspace': [],
-            'delete': [],
-            'other special': []
+            key_type: [] for key_type in KEY_TYPE_CONDS
         }
 
 
@@ -96,20 +121,29 @@ class KeyTrackerPrivate:
         """
 
         self._log_file.close()
-
         self.end_time = time.time()
-        count_alphanumeric = len(self._key_press_spans['alphanumeric'])
-        count_backspace = len(self._key_press_spans['backspace'])
-        count_delete = len(self._key_press_spans['delete'])
-        count_other_special = len(self._key_press_spans['other special'])
-        count_total = (
-            count_alphanumeric + 
-            count_backspace + 
-            count_delete + 
-            count_other_special)
+
+        # start writing session summary
+        self._summary_file.write(
+            'session started at %s\n' % self.start_datetime)
+        self._summary_file.write(
+            'session length is %f seconds\n' 
+            % (self.end_time - self.start_time))
+
+        # compute press counts of individual, total, and error key types
+        count_total = count_error = 0
+        for key_type in KEY_TYPE_CONDS:
+            key_press_times = len(self._key_press_spans[key_type])
+
+            count_total += key_press_times
+            if key_type in ERROR_KEY_TYPES:
+                count_error += key_press_times
+            
+            self._summary_file.write(
+                '%s keys pressed %d times\n' % (key_type, key_press_times)) 
+        
         if count_total:
-            ratio_error_to_total = (
-                (count_backspace + count_delete) / count_total)
+            ratio_error_to_total = count_error / count_total
         else:
             # avoid zero division in case no keys pressed in session
             ratio_error_to_total = float('nan')
@@ -118,20 +152,6 @@ class KeyTrackerPrivate:
         mean_key_press_span: float = np.average(
             list(chain.from_iterable(self._key_press_spans.values())))
 
-        # write summary of session
-        self._summary_file.write(
-            'session started at %s\n' % self.start_datetime)
-        self._summary_file.write(
-            'session length is %f seconds\n' 
-            % (self.end_time - self.start_time))
-        self._summary_file.write(
-            'alphanumeric keys pressed %d times\n' % count_alphanumeric)
-        self._summary_file.write(
-            'backspace key pressed %d times\n' % count_backspace)
-        self._summary_file.write(
-            'delete key pressed %d times\n' % count_delete)
-        self._summary_file.write(
-            'other special keys pressed %d times\n' % count_other_special)
         self._summary_file.write(
             'total keys pressed %d times\n' % count_total)
         self._summary_file.write(
@@ -164,17 +184,10 @@ class KeyTrackerPrivate:
                 self._last_pressed_time[key] = time.time()
             self.last_pressed_key = key
 
-            try:
-                # do NOT output this value, in order to preserve user privacy
-                _x = key.char    
-                print('alphanumeric key pressed')
-            except AttributeError: # special key, no char value
-                if key == Key.backspace:
-                    print('backspace key pressed')
-                elif key == Key.delete:
-                    print('delete key pressed')
-                else:
-                    print('special key pressed')
+            for key_type, is_key_type in KEY_TYPE_CONDS.items():
+                if is_key_type(key):
+                    print("%s key pressed" % key_type)
+                    break
 
             self._is_last_action_release = False
 
@@ -197,25 +210,12 @@ class KeyTrackerPrivate:
         try:
             key_press_span = time.time() - self._last_pressed_time[key]
 
-            try:
-                # do NOT output this value, in order to preserve user privacy
-                _x = key.char    
-                print('alphanumeric key released')
-                self._key_press_spans['alphanumeric'].append(key_press_span)
-                self._log_file.write('alphanumeric, %f\n' % key_press_span)
-            except AttributeError: # special key, no char value
-                if key == Key.backspace:
-                    print('backspace key released')
-                    self._key_press_spans['backspace'].append(key_press_span)
-                    self._log_file.write('backspace, %f\n' % key_press_span)
-                elif key == Key.delete:
-                    print('delete key released')
-                    self._key_press_spans['delete'].append(key_press_span)
-                    self._log_file.write('delete, %f\n' % key_press_span)
-                else:
-                    print('special key released')
-                    self._key_press_spans['other special'].append(key_press_span)
-                    self._log_file.write('other special, %f\n' % key_press_span)
+            for key_type, is_key_type in KEY_TYPE_CONDS.items():
+                if is_key_type(key):
+                    print('%s key released' % key_type)
+                    self._key_press_spans[key_type].append(key_press_span)
+                    self._log_file.write(
+                        '%s, %f\n' % (key_type, key_press_span))
             
             self._is_last_action_release = True
 
@@ -291,19 +291,20 @@ def run_cron():
 
     print('starting cron thread')
 
-    # Using minute as unit for counter here because we want to check frequently
+    # Using second as unit for counter here because we want to check frequently
     # whether the main thread for tracking has exited.
-    counter_minutes = DELAY_HOURS * 60
-    while counter_minutes:
+    counter_seconds = DELAY_HOURS * SECONDS_IN_HOUR
+    while counter_seconds:
+        time.sleep(1)
+
         if tracker.stopped:
+            # exit while loop to exit thread
             break
 
-        time.sleep(60) # seconds in a minute
-        counter_minutes -= 1
-        if not counter_minutes:
+        if not counter_seconds:
             # start new session and reset counter
             tracker.cron_renew_session()
-            counter_minutes = DELAY_HOURS * 60
+            counter_seconds = DELAY_HOURS * SECONDS_IN_HOUR
 
     print('ending cron thread')
 
@@ -314,6 +315,7 @@ cron_thread = threading.Thread(target=run_cron, name='t2')
 main_thread.start()
 cron_thread.start()
 
+# wait for both threads to finish
 main_thread.join()
 cron_thread.join()
 
