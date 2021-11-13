@@ -5,6 +5,7 @@ import numpy as np
 from itertools import chain
 import os
 import threading
+import schedule
 
 
 
@@ -52,14 +53,31 @@ class PrivateKeyTracker:
         if not os.path.exists(output_dir):
             os.mkdir(output_dir)
 
+        self._lock = threading.Lock()
+
+        self._start_session()
+
+        schedule.every().minute.at(':17').do(self.cron_new_session)
+
+        # FIXME: this is blocking right now - change to non-blocking
+        while True:
+            time.sleep(1)
+            schedule.run_pending()
+            
+
+
+    def _start_session(self):
+        """
+        Start a new session with appropriate attribute values.
+        """
+
         self.start_time = time.time()
         self.start_datetime = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
         log_filename = 'log_' + self.start_datetime
         summary_filename = 'summary_' + self.start_datetime
         self._log_file = open('outputs/' + log_filename, 'w+')
         self._summary_file = open('outputs/' + summary_filename, 'w+')
-        
-        self._lock = threading.Lock()
+
         self._is_last_action_release = True
         self._last_pressed_time: dict[Key, float] = {}
         self._key_press_spans: dict[str, list[float]] = {
@@ -70,9 +88,60 @@ class PrivateKeyTracker:
         }
 
 
-    def __on_press(self, key: Key):
+    def _end_session(self):
         """
-        The callback function when a key is pressed (hidden function)
+        Finish logging and close the log files.
+        """
+
+        self._log_file.close()
+
+        self.end_time = time.time()
+        count_alphanumeric = len(self._key_press_spans['alphanumeric'])
+        count_backspace = len(self._key_press_spans['backspace'])
+        count_delete = len(self._key_press_spans['delete'])
+        count_other_special = len(self._key_press_spans['other special'])
+        count_total = (
+            count_alphanumeric + 
+            count_backspace + 
+            count_delete + 
+            count_other_special)
+        if count_total:
+            ratio_error_to_total = (
+                (count_backspace + count_delete) / count_total)
+        else:
+            ratio_error_to_total = float('nan')
+
+        # join press spans for all types of keys, then compute average
+        mean_key_press_span: float = np.average(
+            list(chain.from_iterable(self._key_press_spans.values())))
+
+        # write summary of session
+        self._summary_file.write(
+            'session started at %s\n' % self.start_datetime)
+        self._summary_file.write(
+            'session length is %f seconds\n' 
+            % (self.end_time - self.start_time))
+        self._summary_file.write(
+            'alphanumeric keys pressed %d times\n' % count_alphanumeric)
+        self._summary_file.write(
+            'backspace key pressed %d times\n' % count_backspace)
+        self._summary_file.write(
+            'delete key pressed %d times\n' % count_delete)
+        self._summary_file.write(
+            'other special keys pressed %d times\n' % count_other_special)
+        self._summary_file.write(
+            'total keys pressed %d times\n' % count_total)
+        self._summary_file.write(
+            'error to total ratio is %f\n' % ratio_error_to_total)
+        self._summary_file.write(
+            'average key press span is %f seconds\n' % mean_key_press_span)
+
+        self._summary_file.close()
+
+
+    def _on_press(self, key: Key):
+        """
+        Gets called when a key is pressed (hidden function).
 
         Parameters
         ----------
@@ -110,9 +179,9 @@ class PrivateKeyTracker:
             self._lock.release()
 
 
-    def __on_release(self, key: Key):
+    def _on_release(self, key: Key):
         """
-        The callback function when a key is released (hidden function)
+        Gets called when a key is released (hidden function).
 
         Parameters
         ----------
@@ -121,6 +190,7 @@ class PrivateKeyTracker:
         """
 
         self._lock.acquire() # guarantee ongoing press and release actions complete
+
         try:
             key_press_span = time.time() - self._last_pressed_time[key]
 
@@ -147,48 +217,7 @@ class PrivateKeyTracker:
             self._is_last_action_release = True
 
             if key == Key.esc:
-                # close log file
-                self._log_file.close()
-
-                self.end_time = time.time()
-                count_alphanumeric = len(self._key_press_spans['alphanumeric'])
-                count_backspace = len(self._key_press_spans['backspace'])
-                count_delete = len(self._key_press_spans['delete'])
-                count_other_special = len(self._key_press_spans['other special'])
-                count_total = (
-                    count_alphanumeric + 
-                    count_backspace + 
-                    count_delete + 
-                    count_other_special)
-                ratio_error_to_total = (
-                    (count_backspace + count_delete) / count_total)
-
-                # join press spans for all types of keys, then compute average
-                mean_key_press_span: float = np.average(
-                    list(chain.from_iterable(self._key_press_spans.values())))
-
-                # write summary of session
-                self._summary_file.write(
-                    'session started at %s\n' % self.start_datetime)
-                self._summary_file.write(
-                    'session length is %f seconds\n' 
-                    % (self.end_time - self.start_time))
-                self._summary_file.write(
-                    'alphanumeric keys pressed %d times\n' % count_alphanumeric)
-                self._summary_file.write(
-                    'backspace key pressed %d times\n' % count_backspace)
-                self._summary_file.write(
-                    'delete key pressed %d times\n' % count_delete)
-                self._summary_file.write(
-                    'other special keys pressed %d times\n' % count_other_special)
-                self._summary_file.write(
-                    'total keys pressed %d times\n' % count_total)
-                self._summary_file.write(
-                    'error to total ratio is %f\n' % ratio_error_to_total)
-                self._summary_file.write(
-                    'average key press span is %f seconds\n' % mean_key_press_span)
-
-                self._summary_file.close()
+                self._end_session()
 
                 # stop listener
                 return False
@@ -203,15 +232,31 @@ class PrivateKeyTracker:
 
     def start(self):
         """
-        Starts the tracker, which can be terminated with 'esc' key
+        Starts a session, which can be terminated with 'esc' key.
         """
 
         self.listener = Listener(
-            on_press=self.__on_press,
-            on_release=self.__on_release)
+            on_press=self._on_press,
+            on_release=self._on_release)
         
         self.listener.start()
         self.listener.join()
+    
+    
+    def cron_new_session(self):
+        """
+        End current session and start a new one. To be used as a cron job.
+        """
+
+        print('entered cron new session')
+        self._lock.acquire() # to not collide with a key press or release
+
+        try:
+            self._end_session()
+            self._start_session()
+
+        finally:
+            self._lock.release()
 
 
 
