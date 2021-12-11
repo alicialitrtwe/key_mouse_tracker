@@ -76,7 +76,7 @@ class KeyTrackerPrivate:
     Methods
     -------
     start()
-        Starts the tracker, which can be terminated with 'esc' key
+        Starts the tracker, which can be terminated by keyboard interrupt
     cron_new_session()
         End current session and start a new one. To be used as a cron job.
     """
@@ -221,10 +221,6 @@ class KeyTrackerPrivate:
 
             self._is_last_action_release = True
 
-            if key == Key.esc:
-                self._end_session()
-                return False
-
         except Exception as e:
             if e is KeyError:
                 # overlapped keys, so we pass
@@ -250,7 +246,7 @@ class KeyTrackerPrivate:
 
     def start(self):
         """
-        Starts a session, which can be terminated with 'esc' key.
+        Starts a session, which can be terminated by keyboard interrupt.
         """
 
         time.sleep(1)
