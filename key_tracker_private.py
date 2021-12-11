@@ -8,7 +8,6 @@ import os
 import threading
 
 
-
 DELAY_HOURS = 6
 """
 Number of hours for each session's length.
@@ -31,14 +30,13 @@ KEY_TYPE_CONDS: Dict[str, Callable[[Key], bool]] = {
     'alphanumeric': lambda key: hasattr(key, 'char'),
     'backspace': lambda key: key == Key.backspace,
     'delete': lambda key: key == Key.delete,
-    'other special': lambda key: (not hasattr(key, 'char') 
-                                        and key != Key.backspace 
-                                        and key != Key.delete)
+    'other special': lambda key: (not hasattr(key, 'char')
+                                  and key != Key.backspace
+                                  and key != Key.delete)
 }
 """
 Key types of interest along with their differentiator function.
 """
-
 
 
 class KeyTrackerPrivate:
@@ -46,7 +44,7 @@ class KeyTrackerPrivate:
     A key tracker which identifies 'backspace' and 'delete' keys only and groups 
     other keys into 'alphanumeric' or 'other special' keys. The tracker outputs 
     the log and summary of tracking sessions in a directory named 'outputs'.
-    
+
     ...
 
     Attributes
@@ -83,7 +81,6 @@ class KeyTrackerPrivate:
         End current session and start a new one. To be used as a cron job.
     """
 
-
     def __init__(self):
         # create output directory
         output_dir = os.path.join(os.getcwd(), r'outputs')
@@ -93,13 +90,13 @@ class KeyTrackerPrivate:
         self._lock = threading.Lock()
 
         self._start_session()
-            
 
     def _start_session(self):
         """
         Start a new session with appropriate attribute values.
         """
 
+        self.stopped = False
         self.start_time = time.time()
         self.start_datetime = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
         log_filename = 'outputs/log_' + self.start_datetime
@@ -114,7 +111,6 @@ class KeyTrackerPrivate:
             key_type: [] for key_type in KEY_TYPE_CONDS
         }
 
-
     def _end_session(self):
         """
         Finish logging and close the log files.
@@ -127,7 +123,7 @@ class KeyTrackerPrivate:
         self._summary_file.write(
             'session started at %s\n' % self.start_datetime)
         self._summary_file.write(
-            'session length is %f seconds\n' 
+            'session length is %f seconds\n'
             % (self.end_time - self.start_time))
 
         # compute press counts of individual, total, and error key types
@@ -138,10 +134,10 @@ class KeyTrackerPrivate:
             count_total += key_press_times
             if key_type in ERROR_KEY_TYPES:
                 count_error += key_press_times
-            
+
             self._summary_file.write(
-                '%s keys pressed %d times\n' % (key_type, key_press_times)) 
-        
+                '%s keys pressed %d times\n' % (key_type, key_press_times))
+
         if count_total:
             ratio_error_to_total = count_error / count_total
         else:
@@ -163,7 +159,8 @@ class KeyTrackerPrivate:
 
         # TODO
         self._upload_logs()
-
+        # stop listener
+        self.stopped = True
 
     def _on_press(self, key: Key):
         """
@@ -175,14 +172,16 @@ class KeyTrackerPrivate:
             The key pressed
         """
 
-        self._lock.acquire() # guarantee ongoing press/release actions complete
+        self._lock.acquire()  # guarantee ongoing press/release actions complete
 
+        if self.stopped:
+            return False
         try:
-            # Only update last_pressed_time[key] if following a release action 
-            # or if last key pressed is not the current key pressed. In other 
-            # words, in the event where the current key was pressed last and not 
-            # released, do not update its last pressed time value and instead 
-            # count it as a continued key press. 
+            # Only update last_pressed_time[key] if following a release action
+            # or if last key pressed is not the current key pressed. In other
+            # words, in the event where the current key was pressed last and not
+            # released, do not update its last pressed time value and instead
+            # count it as a continued key press.
             if self._is_last_action_release or self.last_pressed_key != key:
                 self._last_pressed_time[key] = time.time()
             self.last_pressed_key = key
@@ -197,7 +196,6 @@ class KeyTrackerPrivate:
         finally:
             self._lock.release()
 
-
     def _on_release(self, key: Key):
         """
         Gets called when a key is released (hidden function).
@@ -208,7 +206,7 @@ class KeyTrackerPrivate:
             The key released
         """
 
-        self._lock.acquire() # guarantee ongoing press/release actions complete
+        self._lock.acquire()  # guarantee ongoing press/release actions complete
 
         try:
             now = time.time()
@@ -220,38 +218,42 @@ class KeyTrackerPrivate:
                     self._key_press_spans[key_type].append(key_press_span)
                     self._log_file.write(
                         '%s, %f, %f\n' % (key_type, key_press_span, now))
-            
+
             self._is_last_action_release = True
 
             if key == Key.esc:
                 self._end_session()
-
-                # stop listener
-                self.stopped = True
                 return False
 
-        except KeyError:
-            # overlapped keys, so we pass
-            pass
+        except Exception as e:
+            if e is KeyError:
+                # overlapped keys, so we pass
+                pass
+            elif e is IOError:
+                pass
 
         finally:
             self._lock.release()
-    
 
     def _upload_logs(self):
         """
         Upload the log files to designated cloud storage.
         Currently not implemented. TODO
         """
-        
+
         pass
 
+    def stop(self):
+        self._end_session()
+        self._running = False
+        Listener.stop(self)
 
     def start(self):
         """
         Starts a session, which can be terminated with 'esc' key.
         """
 
+        time.sleep(1)
         print('\n###############')
         print('TRACKING STARTS')
         print('###############\n')
@@ -259,11 +261,10 @@ class KeyTrackerPrivate:
         self.listener = Listener(
             on_press=self._on_press,
             on_release=self._on_release)
-        
+
         self.listener.start()
         self.listener.join()
-    
-    
+
     def cron_renew_session(self):
         """
         End current session and start a new one. To be used as a cron job.
@@ -273,7 +274,7 @@ class KeyTrackerPrivate:
         print('NEW SESSION ENTERED')
         print('###################\n')
 
-        self._lock.acquire() # to avoid collision with a key press or release
+        self._lock.acquire()  # to avoid collision with a key press or release
 
         try:
             self._end_session()
@@ -283,11 +284,7 @@ class KeyTrackerPrivate:
             self._lock.release()
 
 
-
-tracker = KeyTrackerPrivate() # create a new tracker
-
-
-def run_main():
+def run_main(tracker: KeyTrackerPrivate):
     """
     Start the tracker.
     """
@@ -297,7 +294,7 @@ def run_main():
     print('ending main thread')
 
 
-def run_cron():
+def run_cron(tracker: KeyTrackerPrivate):
     """
     Start timer for renewing sessions.
     """
@@ -323,16 +320,22 @@ def run_cron():
     print('ending cron thread')
 
 
-main_thread = threading.Thread(target=run_main, name='t1')
-cron_thread = threading.Thread(target=run_cron, name='t2')
+tracker = KeyTrackerPrivate()  # create a new tracker
 
-main_thread.start()
-cron_thread.start()
+main_thread = threading.Thread(target=(lambda: run_main(tracker)), name='t1')
+cron_thread = threading.Thread(target=(lambda: run_cron(tracker)), name='t2')
 
-# wait for both threads to finish
-main_thread.join()
-cron_thread.join()
+try:
+    main_thread.start()
+    cron_thread.start()
 
-print('\n#############')
-print('TRACKING ENDS')
-print('#############\n')
+    # wait for both threads to finish
+    main_thread.join()
+    cron_thread.join()
+
+except KeyboardInterrupt:
+    tracker.stop()
+
+    print('\n#############')
+    print('TRACKING ENDS')
+    print('#############\n')
