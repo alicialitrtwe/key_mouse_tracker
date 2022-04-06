@@ -133,3 +133,6 @@ outputs
 
 # Playground
 playground
+
+# Pycharm
+.idea/
