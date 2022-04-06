@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" serverName="litrtwe@angry-glue.dyn.berkeley.edu:22" deleteMissingItems="true" exclude=".svn;.idea;.DS_Store;.git;.hg;*.hprof;*.pyc" remoteFilesAllowedToDisappearOnAutoupload="false">
+    <serverData>
+      <paths name="litrtwe@angry-glue.dyn.berkeley.edu:22">
+        <serverdata>
+          <mappings>
+            <mapping deploy="projects/Weill-Neurohub-OPTiMaL/key_tracker_private" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+  </component>
+</project>

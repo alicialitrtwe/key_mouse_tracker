@@ -1,42 +1,38 @@
-from typing import Callable, Dict
-from pynput.keyboard import Key, Listener
+import os
+import subprocess
+import threading
 import time
 from datetime import datetime
-import numpy as np
-from itertools import chain
-import os
-import threading
+from typing import Callable, Dict
+from pynput.keyboard import Key, Listener
 
-
-DELAY_HOURS = 6
-"""
-Number of hours for each session's length.
-"""
+# Number of hours for each session's length.
+DELAY_HOURS = 1 / 120
 
 SECONDS_IN_HOUR = 3600
-"""
-Number of seconds in an hour.
-"""
 
-ERROR_KEY_TYPES = [
-    'backspace',
-    'delete'
-]
-"""
-Key types associated with making a typo/error.
-"""
+LEFT_ALPHANUM = ['`', '1', '2', '3', '4', '5', '6', '~', '!', '@', '#', '$', '%', '^',
+                 'q', 'w', 'e', 'r', 't', 'Q', 'W', 'E', 'R', 'T',
+                 'a', 's', 'd', 'f', 'g', 'A', 'S', 'D', 'F', 'G',
+                 'z', 'x', 'c', 'v', 'b', 'Z', 'X', 'C', 'V', 'B']
 
+RIGHT_ALPHANUM = ['7', '8', '9', '0', '-', '=', '_', '+',
+                  'y', 'u', 'i', 'o', 'p', 'Y', 'U', 'I', 'O', 'P', '[', ']', '{', '}', '|', '\\',
+                  'h', 'j', 'k', 'l', 'H', 'J', 'K', 'L', ';', ':', "'", '"',
+                  'n', 'm', 'N', 'M', ',', '.', '/', '<', '>', '?']
+
+# Key types of interest along with their differentiator function.
 KEY_TYPE_CONDS: Dict[str, Callable[[Key], bool]] = {
-    'alphanumeric': lambda key: hasattr(key, 'char'),
+    'left_alphanum': lambda key: (hasattr(key, 'char')
+                                  and key.char in LEFT_ALPHANUM),
+    'right_alphanum': lambda key: (hasattr(key, 'char')
+                                   and key.char in RIGHT_ALPHANUM),
     'backspace': lambda key: key == Key.backspace,
     'delete': lambda key: key == Key.delete,
-    'other special': lambda key: (not hasattr(key, 'char')
-                                  and key != Key.backspace
-                                  and key != Key.delete)
+    'special': lambda key: (not hasattr(key, 'char')
+                            and key != Key.backspace
+                            and key != Key.delete)
 }
-"""
-Key types of interest along with their differentiator function.
-"""
 
 
 class KeyTrackerPrivate:
@@ -44,22 +40,22 @@ class KeyTrackerPrivate:
     A key tracker which identifies 'backspace' and 'delete' keys only and groups 
     other keys into 'alphanumeric' or 'other special' keys. The tracker outputs 
     the log and summary of tracking sessions in a directory named 'outputs'.
-
     ...
-
     Attributes
     ----------
+    start_time : str
+        The time at which the current session starts
+    end_time : str
+        The time at which the current session ends
     start_datetime : str
         The date and time at which the current session starts
-    start_time : float
-        The timestamp at which the current session starts
-    end_time : float
-        The timestamp at which the current session ends
+    end_datetime : str
+        The date and time at which the current session ends
     stopped : bool
         Whether the tracker has been stopped
     _log_file : TextIOWrapper
         The file of designated log output, opened with overwrite permission
-    _summary_file : TextIOWrapper
+    _meta_file : TextIOWrapper
         The file of designated summary output, opened with overwrite permission
     _lock : threading.Lock
         The lock which prevents press and release actions from interleaving
@@ -70,8 +66,6 @@ class KeyTrackerPrivate:
     _last_pressed_time : float
         The timestamp at which the last key was pressed at any given time 
         during session
-    _key_press_spans : dict[str, list[float]]
-        The key press spans of corresponding types of keys
 
     Methods
     -------
@@ -83,33 +77,29 @@ class KeyTrackerPrivate:
 
     def __init__(self):
         # create output directory
-        output_dir = os.path.join(os.getcwd(), r'outputs')
-        if not os.path.exists(output_dir):
-            os.mkdir(output_dir)
-
+        self.output_dir = os.path.join(os.getcwd(), 'outputs')
+        self.metadata_dir = os.path.join(self.output_dir, 'metadata')
+        if not os.path.exists(self.output_dir):
+            os.mkdir(self.output_dir)
+        if not os.path.exists(self.metadata_dir):
+            os.mkdir(self.metadata_dir)
         self._lock = threading.Lock()
-
-        self._start_session()
 
     def _start_session(self):
         """
         Start a new session with appropriate attribute values.
         """
-
         self.stopped = False
         self.start_time = time.time()
-        self.start_datetime = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-        log_filename = 'outputs/log_' + self.start_datetime
-        summary_filename = 'outputs/summary_' + self.start_datetime
-        self._log_file = open(log_filename, 'w+')
-        self._summary_file = open(summary_filename, 'w+')
+        self.start_datetime = datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d_%H-%M-%S')
+        self.start_date = self.start_datetime.split('_')[0]
 
-        self.stopped = False
+        if not os.path.exists(os.path.join(self.output_dir, self.start_date)):
+            os.mkdir(os.path.join(self.output_dir, self.start_date))
+        log_file_path = os.path.join(self.output_dir, self.start_date, f'key_{self.start_datetime}.csv')
+        self._log_file = open(log_file_path, 'w+')
         self._is_last_action_release = True
         self._last_pressed_time: dict[Key, float] = {}
-        self._key_press_spans: dict[str, list[float]] = {
-            key_type: [] for key_type in KEY_TYPE_CONDS
-        }
 
     def _end_session(self):
         """
@@ -118,46 +108,15 @@ class KeyTrackerPrivate:
 
         self._log_file.close()
         self.end_time = time.time()
+        self.end_datetime = datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d_%H-%M-%S')
+        self.end_date = self.end_datetime.split('_')[0]
 
         # start writing session summary
-        self._summary_file.write(
-            'session started at %s\n' % self.start_datetime)
-        self._summary_file.write(
-            'session length is %f seconds\n'
-            % (self.end_time - self.start_time))
+        self._meta_file.write(
+            f'session_start, {self.start_datetime}, '
+            f'session_end, {self.end_datetime}, '
+            f'session_duration, {self.end_time - self.start_time}\n')
 
-        # compute press counts of individual, total, and error key types
-        count_total = count_error = 0
-        for key_type in KEY_TYPE_CONDS:
-            key_press_times = len(self._key_press_spans[key_type])
-
-            count_total += key_press_times
-            if key_type in ERROR_KEY_TYPES:
-                count_error += key_press_times
-
-            self._summary_file.write(
-                '%s keys pressed %d times\n' % (key_type, key_press_times))
-
-        if count_total:
-            ratio_error_to_total = count_error / count_total
-        else:
-            # avoid zero division in case no keys pressed in session
-            ratio_error_to_total = float('nan')
-
-        # join press spans for all types of keys, then compute average
-        mean_key_press_span: float = np.average(
-            list(chain.from_iterable(self._key_press_spans.values())))
-
-        self._summary_file.write(
-            'total keys pressed %d times\n' % count_total)
-        self._summary_file.write(
-            'error to total ratio is %f\n' % ratio_error_to_total)
-        self._summary_file.write(
-            'average key press span is %f seconds\n' % mean_key_press_span)
-
-        self._summary_file.close()
-
-        # TODO
         self._upload_logs()
         # stop listener
         self.stopped = True
@@ -188,7 +147,10 @@ class KeyTrackerPrivate:
 
             for key_type, is_key_type in KEY_TYPE_CONDS.items():
                 if is_key_type(key):
-                    print("%s key pressed" % key_type)
+                    try:
+                        print(f'{key_type} key: {key.char} released')
+                    except AttributeError:
+                        print(f'{key_type} key: {key} pressed')
                     break
 
             self._is_last_action_release = False
@@ -214,10 +176,14 @@ class KeyTrackerPrivate:
 
             for key_type, is_key_type in KEY_TYPE_CONDS.items():
                 if is_key_type(key):
-                    print('%s key released' % key_type)
-                    self._key_press_spans[key_type].append(key_press_span)
-                    self._log_file.write(
-                        '%s, %f, %f\n' % (key_type, key_press_span, now))
+                    try:
+                        print(f'{key_type} key: {key.char} released')
+                        self._log_file.write(
+                            f'{key_type} {key.char} {now} {key_press_span}\n')
+                    except AttributeError:
+                        print(f'{key_type} key: {key} released')
+                        self._log_file.write(
+                            f'{key_type} {key} {now} {key_press_span}\n')
 
             self._is_last_action_release = True
 
@@ -234,32 +200,33 @@ class KeyTrackerPrivate:
     def _upload_logs(self):
         """
         Upload the log files to designated cloud storage.
-        Currently not implemented. TODO
         """
+        # subprocess.run(f'rclone copy {source} {target}')
 
         pass
-
-    def stop(self):
-        self._end_session()
-        self._running = False
-        Listener.stop(self)
 
     def start(self):
         """
         Starts a session, which can be terminated by keyboard interrupt.
         """
 
-        time.sleep(1)
+        # time.sleep(1)
         print('\n###############')
         print('TRACKING STARTS')
         print('###############\n')
-
+        self._start_session()
+        meta_file_path = os.path.join(self.output_dir, 'metadata', f'key_meta_{self.start_datetime}.csv')
+        self._meta_file = open(meta_file_path, 'w+')
         self.listener = Listener(
             on_press=self._on_press,
             on_release=self._on_release)
-
         self.listener.start()
         self.listener.join()
+
+    def stop(self):
+        self._end_session()
+        self._meta_file.close()
+        self.listener.stop()
 
     def cron_renew_session(self):
         """
