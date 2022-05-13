@@ -58,10 +58,11 @@ class KeyTrackerPrivate:
         self.listener = None
         self._meta_file = None
         if CONFIG.SAVE_DIR is not None:
-            self.output_dir = CONFIG.SAVE_DIR
+            save_dir = CONFIG.SAVE_DIR
         else:
-            self.output_dir = os.path.join(os.getcwd(), 'outputs')
-        self.metadata_dir = os.path.join(self.output_dir, 'metadata')
+            save_dir =os.getcwd()
+        self.output_dir = os.path.join(save_dir, 'outputs')
+        self.metadata_dir = os.path.join(save_dir, 'metadata')
         if not os.path.exists(self.output_dir):
             os.mkdir(self.output_dir)
         if not os.path.exists(self.metadata_dir):
@@ -181,7 +182,7 @@ class KeyTrackerPrivate:
         """
         # subprocess.run(f'rclone copy {source} {target}')
 
-        pass
+        return NotImplementedError
 
     def start(self):
         """

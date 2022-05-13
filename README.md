@@ -1,7 +1,7 @@
 Author: Yijia Chen, Alicia Zeng
 # privacy-key-tracker
 
-Key tracker for patients with Parkinson's disease, privacy guaranteed.
+Key and mouse tracker, privacy guaranteed.
 
 # Instructions
 
@@ -12,10 +12,7 @@ First make sure `Python3` is installed on your machine, and so are the following
 
 If they are not yet installed, install them using `pip3 install <package-name>`.
 
-Then, in the project directory, run `python3 key_tracker_private.py`. Results will be stored in a folder named 'outputs'
-in the project directory.
+Then, in the project directory, run `python3 key_tracker_private.py`. Specify a save directory in CONFIG.py.
+Otherwise, results will be stored 'outputs' and 'metadata' folders in the project directory.
 
-# Next Steps
-
-- Automatically uploading log files to Wasabi
-- More items to track
+Exit tracking with keyboard exception in the terminal any time.
