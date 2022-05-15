@@ -57,26 +57,44 @@ class MouseTracker:
     def __init__(self):
         self.stopped = None
         self.listener = None
-
-    def _on_move(self, x, y):
-        print('Pointer moved to {0}'.format(
-            (x, y)))
-
-    def _on_click(self, x, y, button, pressed):
-        print('{0} at {1}'.format(
-            'Pressed' if pressed else 'Released',
-            (x, y)))
-
-    def _on_scroll(self, x, y, dx, dy):
-        print('Scrolled {0} at {1}'.format(
-            'down' if dy < 0 else 'up',
-            (x, y)))
-
-    def start(self):
+        self._lock = threading.Lock()
         self.listener = mouse.Listener(
              on_move=self._on_move,
              on_click=self._on_click,
              on_scroll=self._on_scroll)
+
+    def _on_move(self, x, y):
+        self._lock.acquire()  # guarantee ongoing actions complete
+        now = time.time()
+        try:
+            print(f'move, {now}, {x}, {y}, NaN, NaN, NaN, NaN')
+        except Exception as e:
+            print('Exception on move:', e)
+        finally:
+            self._lock.release()
+
+    def _on_click(self, x, y, button, pressed):
+        self._lock.acquire()  # guarantee ongoing actions complete
+        now = time.time()
+        try:
+            print(f'click, {now}, {x}, {y}, {button}, {pressed}, NaN, NaN')
+        except Exception as e:
+            print('Exception on click:', e)
+        finally:
+            self._lock.release()
+
+    def _on_scroll(self, x, y, dx, dy):
+        self._lock.acquire()  # guarantee ongoing actions complete
+        now = time.time()
+        try:
+            print(f'scroll, {now}, {x}, {y}, NaN, NaN, {dx}, {dy}')
+        except Exception as e:
+            print('Exception on scroll:', e)
+        finally:
+            self._lock.release()
+
+    def start(self):
+        self.stopped = False
         self.listener.start()
         self.listener.join()
 

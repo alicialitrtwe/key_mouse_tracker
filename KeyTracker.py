@@ -2,14 +2,11 @@ import os
 import threading
 import time
 from datetime import datetime
-
-from pynput.keyboard import Key, Listener
+from pynput import keyboard
+from pynput.keyboard import Key
 from typing import Dict
-
 import CONFIG
 import KEY_DICT
-
-SECONDS_IN_HOUR = 3600
 
 
 class KeyTrackerPrivate:
@@ -55,19 +52,30 @@ class KeyTrackerPrivate:
 
     def __init__(self):
         # create output directory
+        self.dev = 'key'
         self.listener = None
         self._meta_file = None
+        self._lock = threading.Lock()
+
+        self.listener = keyboard.Listener(
+            on_press=self._on_press,
+            on_release=self._on_release)
+
         if CONFIG.SAVE_DIR is not None:
             save_dir = CONFIG.SAVE_DIR
         else:
-            save_dir =os.getcwd()
-        self.output_dir = os.path.join(save_dir, 'outputs')
-        self.metadata_dir = os.path.join(save_dir, 'metadata')
+            save_dir = os.getcwd()
+        self.output_dir = os.path.join(save_dir, f'{self.dev}/outputs')
+        self.metadata_dir = os.path.join(save_dir, f'{self.dev}/metadata')
+        if not os.path.exists(save_dir):
+            os.mkdir(save_dir)
+        if not os.path.exists(os.path.join(save_dir, self.dev)):
+            os.mkdir(os.path.join(save_dir, self.dev))
         if not os.path.exists(self.output_dir):
             os.mkdir(self.output_dir)
         if not os.path.exists(self.metadata_dir):
             os.mkdir(self.metadata_dir)
-        self._lock = threading.Lock()
+
 
     def _start_session(self):
         """
@@ -79,7 +87,7 @@ class KeyTrackerPrivate:
 
         if not os.path.exists(os.path.join(self.output_dir, self.start_date)):
             os.mkdir(os.path.join(self.output_dir, self.start_date))
-        log_file_path = os.path.join(self.output_dir, self.start_date, f'key_logger_{self.start_datetime}.csv')
+        log_file_path = os.path.join(self.output_dir, self.start_date, f'{self.dev}_logger_{self.start_datetime}.csv')
         self._log_file = open(log_file_path, 'w+')
         self._log_file.write('key_type, key_name, press_time, press_duration\n')
         self._is_last_action_release = True
@@ -94,12 +102,9 @@ class KeyTrackerPrivate:
         self.end_time = time.time()
         self.end_datetime = datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d_%H-%M-%S')
         self.end_date = self.end_datetime.split('_')[0]
-
         # start writing session summary
         self._meta_file.write(
             f'{self.start_datetime}, {self.end_datetime}, {self.end_time - self.start_time}\n')
-
-        self._upload_logs()
 
     def _on_press(self, key: Key):
         """
@@ -113,8 +118,6 @@ class KeyTrackerPrivate:
 
         self._lock.acquire()  # guarantee ongoing press/release actions complete
 
-        if self.stopped:
-            return False
         try:
             # Only update last_pressed_time[key] if following a release action
             # or if the last key pressed is not the current key pressed. In other
@@ -182,7 +185,7 @@ class KeyTrackerPrivate:
         """
         # subprocess.run(f'rclone copy {source} {target}')
 
-        return NotImplementedError
+        raise NotImplementedError
 
     def start(self):
         """
@@ -190,17 +193,13 @@ class KeyTrackerPrivate:
         """
 
         # time.sleep(1)
-        print('\n###############')
-        print('KEY TRACKING STARTS')
-        print('###############\n')
         self.stopped = False
         self._start_session()
-        meta_file_path = os.path.join(self.metadata_dir, f'key_meta_{self.start_datetime}.csv')
+        if not os.path.exists(os.path.join(self.metadata_dir, self.start_date)):
+            os.mkdir(os.path.join(self.metadata_dir, self.start_date))
+        meta_file_path = os.path.join(self.metadata_dir, self.start_date, f'{self.dev}_meta_{self.start_datetime}.csv')
         self._meta_file = open(meta_file_path, 'w+')
         self._meta_file.write('session_start, session_end, session_duration\n')
-        self.listener = Listener(
-            on_press=self._on_press,
-            on_release=self._on_release)
         self.listener.start()
         self.listener.join()
 
@@ -227,60 +226,3 @@ class KeyTrackerPrivate:
 
         finally:
             self._lock.release()
-
-
-def run_tracker(tracker: KeyTrackerPrivate):
-    """
-    Start the tracker.
-    """
-
-    print('starting tracker thread')
-    tracker.start()
-    print('ending tracker thread')
-
-
-def run_cron(tracker: KeyTrackerPrivate):
-    """
-    Start timer for renewing sessions.
-    """
-
-    print('starting cron thread')
-
-    # Using second as unit for counter here because we want to check frequently
-    # whether the main thread for tracking has exited.
-    counter_seconds = CONFIG.SESSION_LENGTH_IN_HOURS * SECONDS_IN_HOUR
-    while counter_seconds:
-        time.sleep(1)
-        counter_seconds -= 1
-        print('stopped', tracker.stopped)
-        if tracker.stopped:
-            # exit while loop to exit thread
-            break
-
-        if not counter_seconds:
-            # start new session and reset counter
-            tracker.renew_session()
-            counter_seconds = CONFIG.SESSION_LENGTH_IN_HOURS * SECONDS_IN_HOUR
-
-    print('ending cron thread')
-
-if __name__ == '__main__':
-    tracker = KeyTrackerPrivate()  # create a new tracker
-
-    tracker_thread = threading.Thread(target=(lambda: run_tracker(tracker)), name='t1')
-    cron_thread = threading.Thread(target=(lambda: run_cron(tracker)), name='t2')
-
-    try:
-        tracker_thread.start()
-        cron_thread.start()
-
-        # wait for both threads to finish
-        tracker_thread.join()
-        cron_thread.join()
-
-    except KeyboardInterrupt:
-        tracker.stop()
-
-        print('\n#############')
-        print('KEY TRACKING ENDS')
-        print('#############\n')
