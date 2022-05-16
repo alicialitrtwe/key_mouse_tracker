@@ -185,7 +185,7 @@ class KeyTrackerPrivate(TrackerBase):
         Whether the last action is release or not
     _last_pressed_key : pynput.keyboard.Key
         The last key pressed
-    _last_pressed_time : float
+    _first_pressed_time : float
         The timestamp at which the last key was pressed at any given time
         during session
     """
@@ -194,7 +194,7 @@ class KeyTrackerPrivate(TrackerBase):
         # create output directory
         super(KeyTrackerPrivate, self).__init__()
         self._last_pressed_key = None
-        self._last_pressed_time: Dict[Key, float] = {}
+        self._first_pressed_time: Dict[Key, float] = {}
         self._is_last_action_release = True
         self.dev = 'key'
         self.listener = keyboard.Listener(
@@ -206,7 +206,9 @@ class KeyTrackerPrivate(TrackerBase):
 
     def _on_press(self, key: Key):
         """
-        Gets called when a key is pressed (hidden function).
+        Gets called when a key is pressed (hidden function). The key parameter passed to callbacks
+        is a pynput.keyboard.Key, for special keys, a pynput.keyboard.KeyCode for normal alphanumeric keys,
+        or just None for unknown keys. see pynput documentation.
 
         Parameters
         ----------
@@ -214,19 +216,19 @@ class KeyTrackerPrivate(TrackerBase):
             The key pressed
         """
 
-        self._lock.acquire()  # guarantee ongoing press/release actions complete
+        self._lock.acquire()  # guarantee ongoing actions complete
         try:
-            # Only update last_pressed_time[key] if following a release action
+            # Only update _first_pressed_time[key] if following a release action
             # or if the last key pressed is not the current key pressed. In other
             # words, in the event where the current key was pressed last and not
-            # released, do not update its last pressed time value and instead
+            # released, do not update its first pressed time value and instead
             # count it as a continued key press.
             print('self._is_last_action_release', self._is_last_action_release)
             print('self._last_pressed_key', self._last_pressed_key)
             print('key', key)
             print('self._last_pressed_key != key', self._last_pressed_key != key)
             if self._is_last_action_release or self._last_pressed_key != key:
-                self._last_pressed_time[key] = time.time()
+                self._first_pressed_time[key] = time.time()
             self._last_pressed_key = key
             if __debug__:
                 for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
@@ -255,11 +257,11 @@ class KeyTrackerPrivate(TrackerBase):
             The key released
         """
 
-        self._lock.acquire()  # guarantee ongoing press/release actions complete
+        self._lock.acquire()  # guarantee ongoing actions complete
 
         try:
             now = time.time()
-            key_press_span = now - self._last_pressed_time[key]
+            key_press_span = now - self._first_pressed_time[key]
 
             for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
                 if is_key_type(key):
@@ -310,27 +312,36 @@ class MouseTracker(TrackerBase):
 
     def _on_move(self, x, y):
         now = time.time()
+        self._lock.acquire()  # guarantee ongoing actions complete
         try:
             if __debug__:
                 print(f'move, {now}, {x}, {y}, NaN, NaN, NaN, NaN')
             self._log_file.write(f'move, {now}, {x}, {y}, NaN, NaN, NaN, NaN\n')
         except Exception as e:
             print('Exception on move:', e)
+        finally:
+            self._lock.release()
 
     def _on_click(self, x, y, button, pressed):
         now = time.time()
+        self._lock.acquire()  # guarantee ongoing actions complete
         try:
             if __debug__:
                 print(f'click, {now}, {x}, {y}, {button}, {pressed}, NaN, NaN')
             self._log_file.write(f'click, {now}, {x}, {y}, {button}, {pressed}, NaN, NaN\n')
         except Exception as e:
             print('Exception on click:', e)
+        finally:
+            self._lock.release()
 
     def _on_scroll(self, x, y, dx, dy):
         now = time.time()
+        self._lock.acquire()  # guarantee ongoing actions complete
         try:
             if __debug__:
                 print(f'scroll, {now}, {x}, {y}, NaN, NaN, {dx}, {dy}')
             self._log_file.write(f'scroll, {now}, {x}, {y}, NaN, NaN, {dx}, {dy}\n')
         except Exception as e:
             print('Exception on scroll:', e)
+        finally:
+            self._lock.release()

@@ -24,6 +24,7 @@ def run_cron(tracker: TrackerBase):
         counter_seconds -= 1
         if tracker.stopped:
             # exit while loop to exit thread
+            print('ending cron job')
             break
 
         if not counter_seconds:
