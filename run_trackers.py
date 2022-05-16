@@ -1,28 +1,21 @@
 import threading
-from KeyTracker import KeyTrackerPrivate
-import CONFIG
 import time
+
+import CONFIG
+from Trackers import KeyTrackerPrivate, TrackerBase, MouseTracker
 
 SECONDS_IN_HOUR = 3600
 
 
-def run_tracker(tracker: KeyTrackerPrivate):
-    """
-    Start the tracker.
-    """
-
-    print('starting tracker thread')
+def run_tracker(tracker: TrackerBase):
     tracker.start()
-    print('ending tracker thread')
 
 
-def run_cron(tracker: KeyTrackerPrivate):
+def run_cron(tracker: TrackerBase):
     """
-    Start timer for renewing sessions.
+    Start cron job for renewing sessions.
     """
-
-    print('starting cron thread')
-
+    print('starting cron job')
     # Using second as unit for counter here because we want to check frequently
     # whether the main thread for tracking has exited.
     counter_seconds = CONFIG.SESSION_LENGTH_IN_HOURS * SECONDS_IN_HOUR
@@ -38,28 +31,34 @@ def run_cron(tracker: KeyTrackerPrivate):
             tracker.renew_session()
             counter_seconds = CONFIG.SESSION_LENGTH_IN_HOURS * SECONDS_IN_HOUR
 
-    print('ending cron thread')
 
 if __name__ == '__main__':
     key_tracker = KeyTrackerPrivate()  # create a new tracker
+    mouse_tracker = MouseTracker()
 
-    tracker_thread = threading.Thread(target=(lambda: run_tracker(key_tracker)), name='t1')
-    cron_thread = threading.Thread(target=(lambda: run_cron(key_tracker)), name='t2')
-
+    key_tracker_thread = threading.Thread(target=(lambda: run_tracker(key_tracker)), name='key_tracker')
+    key_cron_thread = threading.Thread(target=(lambda: run_cron(key_tracker)), name='key_cron')
+    mouse_tracker_thread = threading.Thread(target=(lambda: run_tracker(mouse_tracker)), name='mouse_tracker')
+    mouse_cron_thread = threading.Thread(target=(lambda: run_cron(mouse_tracker)), name='mouse_cron')
     try:
-        tracker_thread.start()
-        cron_thread.start()
+        key_tracker_thread.start()
+        key_cron_thread.start()
+        mouse_tracker_thread.start()
+        mouse_cron_thread.start()
 
         print('\n###############')
         print('TRACKING STARTS')
         print('###############\n')
 
         # wait for both threads to finish
-        tracker_thread.join()
-        cron_thread.join()
+        key_tracker_thread.join()
+        key_cron_thread.join()
+        mouse_tracker_thread.join()
+        mouse_cron_thread.join()
 
     except KeyboardInterrupt:
         key_tracker.stop()
+        mouse_tracker.stop()
 
         print('\n#############')
         print('TRACKING ENDS')

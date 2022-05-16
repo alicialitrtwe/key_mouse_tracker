@@ -1,10 +1,13 @@
 import os
+import subprocess
 import threading
 import time
 from datetime import datetime
-from pynput import keyboard
-from pynput.keyboard import Key
 from typing import Dict
+
+from pynput import keyboard, mouse
+from pynput.keyboard import Key
+
 import CONFIG
 import KEY_DICT
 
@@ -17,16 +20,26 @@ class TrackerBase:
     ...
     Attributes
     ----------
-    start_time : str
+    dev: str
+        'mouse' or 'keyboard'
+    _start_time : str
         The time at which the current session starts
-    end_time : str
+    _end_time : str
         The time at which the current session ends
-    start_datetime : str
+    _start_date : str
+        The date at which the current session starts
+    _start_datetime : str
         The date and time at which the current session starts
-    end_datetime : str
+    _end_datetime : str
         The date and time at which the current session ends
     stopped : bool
         Whether the tracker has been stopped
+    save_dir: str
+        current directory or use specified in CONFIG.py
+    logger_dir : str
+        dir to store output logger files
+    metadata_dir : str
+        dir to store meta files
     _log_file : TextIOWrapper
         The file of designated log output, opened with overwrite permission
     _meta_file : TextIOWrapper
@@ -50,9 +63,12 @@ class TrackerBase:
         # create output directory
         self.dev = None
         self.listener = None
-        self._meta_file = None
         self.stopped = None
         self._lock = threading.Lock()
+        self._meta_file = None
+        self._log_file = None
+        self.metadata_dir = None
+        self.logger_dir = None
 
         if CONFIG.SAVE_DIR is not None:
             self.save_dir = CONFIG.SAVE_DIR
@@ -60,12 +76,15 @@ class TrackerBase:
             self.save_dir = os.getcwd()
 
     def _get_paths(self):
-        self.output_dir = os.path.join(self.save_dir, f'{self.dev}/outputs')
+        """
+        get the paths for saving outputs and meta inf0. create directories if they don't already exist
+        """
+        self.logger_dir = os.path.join(self.save_dir, f'{self.dev}/outputs')
         self.metadata_dir = os.path.join(self.save_dir, f'{self.dev}/metadata')
         if not os.path.exists(os.path.join(self.save_dir, self.dev)):
             os.makedirs(os.path.join(self.save_dir, self.dev), exist_ok=False)
-        if not os.path.exists(self.output_dir):
-            os.mkdir(self.output_dir)
+        if not os.path.exists(self.logger_dir):
+            os.mkdir(self.logger_dir)
         if not os.path.exists(self.metadata_dir):
             os.mkdir(self.metadata_dir)
 
@@ -74,20 +93,15 @@ class TrackerBase:
         Start a new session for logging: create new log file, write the column names
         """
 
-        self.start_time = time.time()
-        self.start_datetime = datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d_%H-%M-%S')
-        self.start_date = self.start_datetime.split('_')[0]
+        self._start_time = time.time()
+        self._start_datetime = datetime.fromtimestamp(self._start_time).strftime('%Y-%m-%d_%H-%M-%S')
+        self._start_date = self._start_datetime.split('_')[0]
 
-        if not os.path.exists(os.path.join(self.output_dir, self.start_date)):
-            os.mkdir(os.path.join(self.output_dir, self.start_date))
-        log_file_path = os.path.join(self.output_dir, self.start_date, f'{self.dev}_logger_{self.start_datetime}.csv')
+        if not os.path.exists(os.path.join(self.logger_dir, self._start_date)):
+            os.mkdir(os.path.join(self.logger_dir, self._start_date))
+        log_file_path = os.path.join(self.logger_dir, self._start_date, f'{self.dev}_logger_{self._start_datetime}.csv')
         self._log_file = open(log_file_path, 'w+')
-        if self.dev == 'key':
-            self._log_file.write('key_type, key_name, timestamp, duration\n')
-            self._is_last_action_release = True
-            self._last_pressed_time: Dict[Key, float] = {}
-        elif self.dev == 'mouse':
-            self._log_file.write('mouse_type, timestamp, x, y, button, press, dx, dy\n')
+        self._init_log_file()
 
     def _end_session(self):
         """
@@ -95,12 +109,21 @@ class TrackerBase:
         """
 
         self._log_file.close()
-        self.end_time = time.time()
-        self.end_datetime = datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d_%H-%M-%S')
-        self.end_date = self.end_datetime.split('_')[0]
-        # start writing session summary
+        self._end_time = time.time()
+        self._end_datetime = datetime.fromtimestamp(self._end_time).strftime('%Y-%m-%d_%H-%M-%S')
+
+        def get_git_revision_short_hash() -> str:
+            return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+
+        # write session summary
         self._meta_file.write(
-            f'{self.start_datetime}, {self.end_datetime}, {self.end_time - self.start_time}\n')
+            f'{self._start_datetime}, {self._end_datetime}, {self._end_time - self._start_time}, {get_git_revision_short_hash()}\n')
+
+    def _init_log_file(self):
+        """
+        To be overwritten
+        """
+        pass
 
     def start(self):
         """
@@ -110,11 +133,12 @@ class TrackerBase:
         self.stopped = False
         self._get_paths()
         self._start_session()
-        if not os.path.exists(os.path.join(self.metadata_dir, self.start_date)):
-            os.mkdir(os.path.join(self.metadata_dir, self.start_date))
-        meta_file_path = os.path.join(self.metadata_dir, self.start_date, f'{self.dev}_meta_{self.start_datetime}.csv')
+        if not os.path.exists(os.path.join(self.metadata_dir, self._start_date)):
+            os.mkdir(os.path.join(self.metadata_dir, self._start_date))
+        meta_file_path = os.path.join(self.metadata_dir, self._start_date,
+                                      f'{self.dev}_meta_{self._start_datetime}.csv')
         self._meta_file = open(meta_file_path, 'w+')
-        self._meta_file.write('session_start, session_end, session_duration\n')
+        self._meta_file.write('session_start, session_end, session_duration, git_version\n')
         self.listener.start()
         self.listener.join()
 
@@ -150,8 +174,13 @@ class KeyTrackerPrivate(TrackerBase):
     """
     A key tracker which identifies 'backspace' and 'delete' keys and groups
     other keys into 'left_alphanum', 'right_alphanum', or 'other special' keys.
+    Does not log the name of the 'left_alphanum', 'right_alphanum' keys, only log key categories.
     Attributes
     ----------
+    dev : string
+        'mouse'
+    listener:
+        a listener based on pynput.mouse.Listener
     _is_last_action_release : bool
         Whether the last action is release or not
     _last_pressed_key : pynput.keyboard.Key
@@ -164,10 +193,16 @@ class KeyTrackerPrivate(TrackerBase):
     def __init__(self):
         # create output directory
         super(KeyTrackerPrivate, self).__init__()
+        self._last_pressed_key = None
+        self._last_pressed_time: Dict[Key, float] = {}
+        self._is_last_action_release = True
         self.dev = 'key'
         self.listener = keyboard.Listener(
             on_press=self._on_press,
             on_release=self._on_release)
+
+    def _init_log_file(self):
+        self._log_file.write('key_type, key_name, timestamp, duration\n')
 
     def _on_press(self, key: Key):
         """
@@ -186,18 +221,22 @@ class KeyTrackerPrivate(TrackerBase):
             # words, in the event where the current key was pressed last and not
             # released, do not update its last pressed time value and instead
             # count it as a continued key press.
+            print('self._is_last_action_release', self._is_last_action_release)
+            print('self._last_pressed_key', self._last_pressed_key)
+            print('key', key)
+            print('self._last_pressed_key != key', self._last_pressed_key != key)
             if self._is_last_action_release or self._last_pressed_key != key:
                 self._last_pressed_time[key] = time.time()
             self._last_pressed_key = key
-
-            for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
-                if is_key_type(key):
-                    try:
-                        # print for debugging purpose, not logged
-                        print(f'{key_type} key: {key.char} pressed')
-                    except AttributeError:
-                        print(f'{key_type} key: {key} pressed')
-                    break
+            if __debug__:
+                for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
+                    if is_key_type(key):
+                        try:
+                            # print for debugging purpose, not logged
+                            print(f'{key_type} key: {key.char} pressed')
+                        except AttributeError:
+                            print(f'{key_type} key: {key} pressed')
+                        break
 
             self._is_last_action_release = False
         except Exception as e:
@@ -225,14 +264,18 @@ class KeyTrackerPrivate(TrackerBase):
             for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
                 if is_key_type(key):
                     try:
-                        print(f'{key_type} key: {key.char} released')
-                        self._log_file.write(
-                            f'{key_type}, {key.char}, {now}, {key_press_span}\n')
+                        if __debug__:
+                            print(f'{key_type} key: {key.char} released')
+                            self._log_file.write(
+                                f'{key_type}, {key.char}, {now}, {key_press_span}\n')
+                        else:
+                            self._log_file.write(
+                                f'{key_type}, NaN, {now}, {key_press_span}\n')
                     except AttributeError:
-                        print(f'{key_type} key: {key} released')
+                        if __debug__:
+                            print(f'{key_type} key: {key} released')
                         self._log_file.write(
                             f'{key_type}, {key}, {now}, {key_press_span}\n')
-
             self._is_last_action_release = True
 
         except Exception as e:
@@ -240,3 +283,54 @@ class KeyTrackerPrivate(TrackerBase):
 
         finally:
             self._lock.release()
+
+
+class MouseTracker(TrackerBase):
+    """
+    A mouse tracker that listens for mouse moves, scrolls and clicks.
+    ...
+    Attributes
+    ----------
+    dev : string
+        'mouse'
+    listener:
+        a listener based on pynput.mouse.Listener
+    """
+
+    def __init__(self):
+        super(MouseTracker, self).__init__()
+        self.dev = 'mouse'
+        self.listener = mouse.Listener(
+            on_move=self._on_move,
+            on_click=self._on_click,
+            on_scroll=self._on_scroll)
+
+    def _init_log_file(self):
+        self._log_file.write('mouse_type, timestamp, x, y, button, press, dx, dy\n')
+
+    def _on_move(self, x, y):
+        now = time.time()
+        try:
+            if __debug__:
+                print(f'move, {now}, {x}, {y}, NaN, NaN, NaN, NaN')
+            self._log_file.write(f'move, {now}, {x}, {y}, NaN, NaN, NaN, NaN\n')
+        except Exception as e:
+            print('Exception on move:', e)
+
+    def _on_click(self, x, y, button, pressed):
+        now = time.time()
+        try:
+            if __debug__:
+                print(f'click, {now}, {x}, {y}, {button}, {pressed}, NaN, NaN')
+            self._log_file.write(f'click, {now}, {x}, {y}, {button}, {pressed}, NaN, NaN\n')
+        except Exception as e:
+            print('Exception on click:', e)
+
+    def _on_scroll(self, x, y, dx, dy):
+        now = time.time()
+        try:
+            if __debug__:
+                print(f'scroll, {now}, {x}, {y}, NaN, NaN, {dx}, {dy}')
+            self._log_file.write(f'scroll, {now}, {x}, {y}, NaN, NaN, {dx}, {dy}\n')
+        except Exception as e:
+            print('Exception on scroll:', e)

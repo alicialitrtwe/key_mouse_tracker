@@ -1,4 +1,5 @@
 from typing import Callable, Dict
+
 from pynput.keyboard import Key
 
 LEFT_ALPHANUM = ['`', '1', '2', '3', '4', '5', '6', '~', '!', '@', '#', '$', '%', '^',
