@@ -223,10 +223,6 @@ class KeyTrackerPrivate(TrackerBase):
             # words, in the event where the current key was pressed last and not
             # released, do not update its first pressed time value and instead
             # count it as a continued key press.
-            print('self._is_last_action_release', self._is_last_action_release)
-            print('self._last_pressed_key', self._last_pressed_key)
-            print('key', key)
-            print('self._last_pressed_key != key', self._last_pressed_key != key)
             if self._is_last_action_release or self._last_pressed_key != key:
                 self._first_pressed_time[key] = time.time()
             self._last_pressed_key = key
