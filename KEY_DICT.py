@@ -18,6 +18,8 @@ KEY_DICT: Dict[str, Callable[[Key], bool]] = {
                                   and key.char.lower() in LEFT_ALPHANUM),
     'right_alphanum': lambda key: (hasattr(key, 'char')
                                    and key.char.lower() in RIGHT_ALPHANUM),
+    # problem with 5 on the linux keypad: key.char = None and gives error with key.char.lower().
+    # ignore since it's rare. will add nothing to the log.
     'backspace': lambda key: key == Key.backspace,
     'delete': lambda key: key == Key.delete,
     'special': lambda key: (not hasattr(key, 'char')

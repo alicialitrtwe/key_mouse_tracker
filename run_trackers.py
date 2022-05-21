@@ -44,8 +44,8 @@ if __name__ == '__main__':
     try:
         key_tracker_thread.start()
         key_cron_thread.start()
-        mouse_tracker_thread.start()
-        mouse_cron_thread.start()
+        #mouse_tracker_thread.start()
+        #mouse_cron_thread.start()
 
         print('\n###############')
         print('TRACKING STARTS')
@@ -54,12 +54,12 @@ if __name__ == '__main__':
         # wait for both threads to finish
         key_tracker_thread.join()
         key_cron_thread.join()
-        mouse_tracker_thread.join()
-        mouse_cron_thread.join()
+        #mouse_tracker_thread.join()
+        #mouse_cron_thread.join()
 
     except KeyboardInterrupt:
         key_tracker.stop()
-        mouse_tracker.stop()
+        #mouse_tracker.stop()
 
         print('\n#############')
         print('TRACKING ENDS')

@@ -6,4 +6,4 @@ else:
     SESSION_LENGTH_IN_HOURS = 1
 
 # Directory to save the outputs
-SAVE_DIR = '/Users/Alicia/PycharmProjects/key_mouse_tracker/save_dir'
+SAVE_DIR = None #'/Users/Alicia/PycharmProjects/key_mouse_tracker/save_dir'
