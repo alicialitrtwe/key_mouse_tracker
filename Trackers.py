@@ -175,6 +175,7 @@ class KeyTrackerPrivate(TrackerBase):
     A key tracker which identifies 'backspace' and 'delete' keys and groups
     other keys into 'left_alphanum', 'right_alphanum', or 'other special' keys.
     Does not log the name of the 'left_alphanum', 'right_alphanum' keys, only log key categories.
+    Note that the timestamp in the log file corresponds to release time.
     Attributes
     ----------
     dev : string
@@ -215,8 +216,8 @@ class KeyTrackerPrivate(TrackerBase):
         key : pynput.keyboard.Key
             The key pressed
         """
-
         self._lock.acquire()  # guarantee ongoing actions complete
+        now = time.time()
         try:
             # Only update _first_pressed_time[key] if following a release action
             # or if the last key pressed is not the current key pressed. In other
@@ -224,19 +225,17 @@ class KeyTrackerPrivate(TrackerBase):
             # released, do not update its first pressed time value and instead
             # count it as a continued key press.
             if self._is_last_action_release or self._last_pressed_key != key:
-                self._first_pressed_time[key] = time.time()
+                self._first_pressed_time[key] = now
             self._last_pressed_key = key
+            self._is_last_action_release = False
             if __debug__:
                 for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
                     if is_key_type(key):
                         try:
                             # print for debugging purpose, not logged
-                            print(f'{key_type} key: {key.char} pressed')
+                            print(f'{key_type} key: {key.char} pressed at {now}')
                         except AttributeError:
-                            print(f'{key_type} key: {key} pressed')
-                        break
-
-            self._is_last_action_release = False
+                            print(f'{key_type} key: {key} pressed at {now}')
         except Exception as e:
             print('Exception on press:', e)
 
@@ -254,16 +253,23 @@ class KeyTrackerPrivate(TrackerBase):
         """
 
         self._lock.acquire()  # guarantee ongoing actions complete
-
+        now = time.time()
+        if __debug__:
+            print('pressed dict:', self._first_pressed_time.items())
         try:
-            now = time.time()
-            key_press_span = now - self._first_pressed_time[key]
+            # problem with some key combinations: i.e. press shift + c and then release shift first. Will record 'C' press
+            # and 'c' release. Will cause key error exception since 'c' has not been added to the '_first_pressed_time'
+            # dictionary. ignore errors like this since it's rare. the key causing error will not be logged.
 
+            key_press_span = now - self._first_pressed_time[key]
+            self._is_last_action_release = True
+            # remove key from dictionary once released. only keys currently pressed will stay
+            self._first_pressed_time.pop(key)
             for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
                 if is_key_type(key):
                     try:
                         if __debug__:
-                            print(f'{key_type} key: {key.char} released')
+                            print(f'{key_type} key: {key.char} released at {now}, duration: {key_press_span}')
                             self._log_file.write(
                                 f'{key_type}, {key.char}, {now}, {key_press_span}\n')
                         else:
@@ -271,10 +277,9 @@ class KeyTrackerPrivate(TrackerBase):
                                 f'{key_type}, NaN, {now}, {key_press_span}\n')
                     except AttributeError:
                         if __debug__:
-                            print(f'{key_type} key: {key} released')
+                            print(f'{key_type} key: {key} released at {now}, duration: {key_press_span}')
                         self._log_file.write(
                             f'{key_type}, {key}, {now}, {key_press_span}\n')
-            self._is_last_action_release = True
 
         except Exception as e:
             print('Exception on release:', e)
