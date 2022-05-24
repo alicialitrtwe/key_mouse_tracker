@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 import threading
@@ -10,6 +11,8 @@ from pynput.keyboard import Key
 
 import CONFIG
 import KEY_DICT
+
+logger = logging.getLogger(__name__)
 
 
 class TrackerBase:
@@ -112,12 +115,9 @@ class TrackerBase:
         self._end_time = time.time()
         self._end_datetime = datetime.fromtimestamp(self._end_time).strftime('%Y-%m-%d_%H-%M-%S')
 
-        def get_git_revision_short_hash() -> str:
-            return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
-
         # write session summary
         self._meta_file.write(
-            f'{self._start_datetime}, {self._end_datetime}, {self._end_time - self._start_time}, {get_git_revision_short_hash()}\n')
+            f'{self._start_datetime},{self._end_datetime},{self._end_time - self._start_time}\n')
 
     def _init_log_file(self):
         """
@@ -138,7 +138,13 @@ class TrackerBase:
         meta_file_path = os.path.join(self.metadata_dir, self._start_date,
                                       f'{self.dev}_meta_{self._start_datetime}.csv')
         self._meta_file = open(meta_file_path, 'w+')
-        self._meta_file.write('session_start, session_end, session_duration, git_version\n')
+
+        def get_git_revision_short_hash() -> str:
+            return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
+                                           cwd=os.path.dirname(os.path.abspath(__file__))).decode('ascii').strip()
+
+        self._meta_file.write(f'git_hash\n{get_git_revision_short_hash()}\n')
+        self._meta_file.write('session_start,session_end,session_duration\n')
         self.listener.start()
         self.listener.join()
 
@@ -203,7 +209,7 @@ class KeyTrackerPrivate(TrackerBase):
             on_release=self._on_release)
 
     def _init_log_file(self):
-        self._log_file.write('key_type, key_name, timestamp, duration\n')
+        self._log_file.write('key_type,key_name,timestamp,duration\n')
 
     def _on_press(self, key: Key):
         """
@@ -228,16 +234,15 @@ class KeyTrackerPrivate(TrackerBase):
                 self._first_pressed_time[key] = now
             self._last_pressed_key = key
             self._is_last_action_release = False
-            if __debug__:
-                for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
-                    if is_key_type(key):
-                        try:
-                            # print for debugging purpose, not logged
-                            print(f'{key_type} key: {key.char} pressed at {now}')
-                        except AttributeError:
-                            print(f'{key_type} key: {key} pressed at {now}')
-        except Exception as e:
-            print('Exception on press:', e)
+            for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
+                if is_key_type(key):
+                    try:
+                        # print for debugging purpose, not logged
+                        logging.debug(f'{key_type} key: {key.char} pressed at {now}')
+                    except AttributeError:
+                        logging.debug(f'{key_type} key: {key} pressed at {now}')
+        except Exception:
+            logging.exception('Exception on press:')
 
         finally:
             self._lock.release()
@@ -254,11 +259,9 @@ class KeyTrackerPrivate(TrackerBase):
 
         self._lock.acquire()  # guarantee ongoing actions complete
         now = time.time()
-        if __debug__:
-            print('pressed dict:', self._first_pressed_time.items())
         try:
             # problem with some key combinations: i.e. press shift + c and then release shift first. Will record 'C' press
-            # and 'c' release. Will cause key error exception since 'c' has not been added to the '_first_pressed_time'
+            # and 'c' release. Might cause key error exception if 'c' has not been added to the '_first_pressed_time'
             # dictionary. ignore errors like this since it's rare. the key causing error will not be logged.
 
             key_press_span = now - self._first_pressed_time[key]
@@ -268,21 +271,16 @@ class KeyTrackerPrivate(TrackerBase):
             for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
                 if is_key_type(key):
                     try:
-                        if __debug__:
-                            print(f'{key_type} key: {key.char} released at {now}, duration: {key_press_span}')
-                            self._log_file.write(
-                                f'{key_type}, {key.char}, {now}, {key_press_span}\n')
-                        else:
-                            self._log_file.write(
-                                f'{key_type}, NaN, {now}, {key_press_span}\n')
-                    except AttributeError:
-                        if __debug__:
-                            print(f'{key_type} key: {key} released at {now}, duration: {key_press_span}')
+                        logging.debug(f'{key_type} key: {key.char} released at {now}, duration: {key_press_span}')
                         self._log_file.write(
-                            f'{key_type}, {key}, {now}, {key_press_span}\n')
+                            f'{key_type},NaN,{now},{key_press_span}\n')
+                    except AttributeError:
+                        logging.debug(f'{key_type} key: {key} released at {now}, duration: {key_press_span}')
+                        self._log_file.write(
+                            f'{key_type},{key},{now},{key_press_span}\n')
 
-        except Exception as e:
-            print('Exception on release:', e)
+        except Exception:
+            logging.exception(f'Exception on release:', exc_info=True)
 
         finally:
             self._lock.release()
@@ -309,17 +307,16 @@ class MouseTracker(TrackerBase):
             on_scroll=self._on_scroll)
 
     def _init_log_file(self):
-        self._log_file.write('mouse_type, timestamp, x, y, button, press, dx, dy\n')
+        self._log_file.write('mouse_type,timestamp,x,y,button,press,dx,dy\n')
 
     def _on_move(self, x, y):
         now = time.time()
         self._lock.acquire()  # guarantee ongoing actions complete
         try:
-            if __debug__:
-                print(f'move, {now}, {x}, {y}, NaN, NaN, NaN, NaN')
-            self._log_file.write(f'move, {now}, {x}, {y}, NaN, NaN, NaN, NaN\n')
-        except Exception as e:
-            print('Exception on move:', e)
+            logging.debug(f'move,{now},{x},{y},NaN,NaN,NaN,NaN')
+            self._log_file.write(f'move,{now},{x},{y},NaN,NaN,NaN,NaN\n')
+        except Exception:
+            logging.exception('Exception on move:')
         finally:
             self._lock.release()
 
@@ -327,11 +324,10 @@ class MouseTracker(TrackerBase):
         now = time.time()
         self._lock.acquire()  # guarantee ongoing actions complete
         try:
-            if __debug__:
-                print(f'click, {now}, {x}, {y}, {button}, {pressed}, NaN, NaN')
-            self._log_file.write(f'click, {now}, {x}, {y}, {button}, {pressed}, NaN, NaN\n')
-        except Exception as e:
-            print('Exception on click:', e)
+            logging.debug(f'click,{now},{x},{y},{button},{pressed},NaN,NaN')
+            self._log_file.write(f'click,{now},{x},{y},{button},{pressed},NaN,NaN\n')
+        except Exception:
+            logging.exception('Exception on click:')
         finally:
             self._lock.release()
 
@@ -339,10 +335,9 @@ class MouseTracker(TrackerBase):
         now = time.time()
         self._lock.acquire()  # guarantee ongoing actions complete
         try:
-            if __debug__:
-                print(f'scroll, {now}, {x}, {y}, NaN, NaN, {dx}, {dy}')
-            self._log_file.write(f'scroll, {now}, {x}, {y}, NaN, NaN, {dx}, {dy}\n')
-        except Exception as e:
-            print('Exception on scroll:', e)
+            logging.debug(f'scroll,{now},{x},{y},NaN,NaN,{dx},{dy}')
+            self._log_file.write(f'scroll,{now},{x},{y},NaN,NaN,{dx},{dy}\n')
+        except Exception:
+            logging.exception('Exception on scroll:')
         finally:
             self._lock.release()
