@@ -129,10 +129,13 @@ dmypy.json
 .pyre/
 
 # Output
-outputs
-
+key/
+mouse/
+save_dir/
 # Playground
 playground
 
 # Pycharm
 .idea/
+
+.DS_Store
