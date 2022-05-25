@@ -12,26 +12,23 @@ def run_tracker(tracker: TrackerBase):
     tracker.start()
 
 
-def run_cron(tracker: TrackerBase):
+def run_renew_session(tracker: TrackerBase):
     """
     Start cron job for renewing sessions.
     """
-    print('starting cron job')
     # Using second as unit for counter here because we want to check frequently
     # whether the main thread for tracking has exited.
     counter_seconds = SESSION_LENGTH_IN_HOURS * SECONDS_IN_HOUR
-    while counter_seconds:
+    logging.debug('start renewing session')
+    while not tracker.stopped:
         time.sleep(1)
         counter_seconds -= 1
-        if tracker.stopped:
-            # exit while loop to exit thread
-            print('ending cron job')
-            break
 
-        if not counter_seconds:
+        if counter_seconds <= 0:
             # start new session and reset counter
             tracker.renew_session()
             counter_seconds = SESSION_LENGTH_IN_HOURS * SECONDS_IN_HOUR
+    logging.debug('end renewing session')
 
 
 if __name__ == '__main__':
@@ -39,8 +36,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-log',
                         '--loglevel',
-                        default='info',
-                        help='Provide logging level. Example --loglevel debug, default=info')
+                        default='warning',
+                        help='Provide logging level. Example --loglevel debug, default=warning')
     parser.add_argument('-dev',
                         '--device',
                         choices=['both', 'key', 'mouse'],
@@ -55,42 +52,42 @@ if __name__ == '__main__':
     else:
         SESSION_LENGTH_IN_HOURS = 1
 
-    if args.device == 'key' or args.device == 'both':
+    key_tracker = None
+    mouse_tracker = None
+    if args.device in ['key', 'both']:
         key_tracker = KeyTrackerPrivate()
         key_tracker_thread = threading.Thread(target=(lambda: run_tracker(key_tracker)), name='key_tracker')
-        key_cron_thread = threading.Thread(target=(lambda: run_cron(key_tracker)), name='key_cron')
+        key_session_thread = threading.Thread(target=(lambda: run_renew_session(key_tracker)), name='key_session')
 
-    if args.device == 'mouse' or args.device == 'both':
+    if args.device in ['mouse', 'both']:
         mouse_tracker = MouseTracker()
         mouse_tracker_thread = threading.Thread(target=(lambda: run_tracker(mouse_tracker)), name='mouse_tracker')
-        mouse_cron_thread = threading.Thread(target=(lambda: run_cron(mouse_tracker)), name='mouse_cron')
+        mouse_session_thread = threading.Thread(target=(lambda: run_renew_session(mouse_tracker)), name='mouse_session')
     try:
-        if args.device == 'key' or args.device == 'both':
+        if key_tracker is not None:
             key_tracker_thread.start()
-            key_cron_thread.start()
-
-        if args.device == 'mouse' or args.device == 'both':
+            key_session_thread.start()
+        if mouse_tracker is not None:
             mouse_tracker_thread.start()
-            mouse_cron_thread.start()
+            mouse_session_thread.start()
 
         print('\n###############')
         print('TRACKING STARTS')
         print('###############\n')
 
-        if args.device == 'key' or args.device == 'both':
+        if key_tracker is not None:
             # wait for threads to finish
             key_tracker_thread.join()
-            key_cron_thread.join()
-
-        if args.device == 'mouse' or args.device == 'both':
+            key_session_thread.join()
+        if mouse_tracker is not None:
             # wait for threads to finish
             mouse_tracker_thread.join()
-            mouse_cron_thread.join()
+            mouse_session_thread.join()
 
     except KeyboardInterrupt:
-        if args.device == 'key' or args.device == 'both':
+        if key_tracker is not None:
             key_tracker.stop()
-        if args.device == 'mouse' or args.device == 'both':
+        if mouse_tracker is not None:
             mouse_tracker.stop()
 
         print('\n#############')

@@ -5,17 +5,18 @@ import threading
 import time
 from datetime import datetime
 from typing import Dict
+from abc import ABC, abstractmethod
 
 from pynput import keyboard, mouse
 from pynput.keyboard import Key
 
-import CONFIG
+import config
 import KEY_DICT
 
 logger = logging.getLogger(__name__)
 
 
-class TrackerBase:
+class TrackerBase(ABC):
     """
     A base class for key tracker and mouse tracker. Not to be used alone. The tracker outputs
     the log and meta info of tracking sessions in a directory named 'outputs'. The logs are stored
@@ -38,7 +39,7 @@ class TrackerBase:
     stopped : bool
         Whether the tracker has been stopped
     save_dir: str
-        current directory or use specified in CONFIG.py
+        current directory or use specified in config.py
     logger_dir : str
         dir to store output logger files
     metadata_dir : str
@@ -58,14 +59,14 @@ class TrackerBase:
         Starts the tracker
     stop()
         Stops the tracker
-    cron_new_session()
+    renew_session()
         End current session and start a new one. To be used as a cron job.
     """
 
-    def __init__(self):
+    def __init__(self, dev=None, listener=None):
         # create output directory
-        self.dev = None
-        self.listener = None
+        self.dev = dev
+        self.listener = listener
         self.stopped = None
         self._lock = threading.Lock()
         self._meta_file = None
@@ -73,14 +74,14 @@ class TrackerBase:
         self.metadata_dir = None
         self.logger_dir = None
 
-        if CONFIG.SAVE_DIR is not None:
-            self.save_dir = CONFIG.SAVE_DIR
+        if config.SAVE_DIR is not None:
+            self.save_dir = config.SAVE_DIR
         else:
             self.save_dir = os.getcwd()
 
     def _get_paths(self):
         """
-        get the paths for saving outputs and meta inf0. create directories if they don't already exist
+        get the paths for saving outputs and meta info. create directories if they don't already exist
         """
         self.logger_dir = os.path.join(self.save_dir, f'{self.dev}/outputs')
         self.metadata_dir = os.path.join(self.save_dir, f'{self.dev}/metadata')
@@ -119,6 +120,7 @@ class TrackerBase:
         self._meta_file.write(
             f'{self._start_datetime},{self._end_datetime},{self._end_time - self._start_time}\n')
 
+    @abstractmethod
     def _init_log_file(self):
         """
         To be overwritten
@@ -198,15 +200,14 @@ class KeyTrackerPrivate(TrackerBase):
     """
 
     def __init__(self):
+        _listener = keyboard.Listener(
+            on_press=self._on_press,
+            on_release=self._on_release)
         # create output directory
-        super(KeyTrackerPrivate, self).__init__()
+        super(KeyTrackerPrivate, self).__init__(dev='key', listener=_listener)
         self._last_pressed_key = None
         self._first_pressed_time: Dict[Key, float] = {}
         self._is_last_action_release = True
-        self.dev = 'key'
-        self.listener = keyboard.Listener(
-            on_press=self._on_press,
-            on_release=self._on_release)
 
     def _init_log_file(self):
         self._log_file.write('key_type,key_name,timestamp,duration\n')
@@ -238,9 +239,9 @@ class KeyTrackerPrivate(TrackerBase):
                 if is_key_type(key):
                     try:
                         # print for debugging purpose, not logged
-                        logging.debug(f'{key_type} key: {key.char} pressed at {now}')
+                        logging.debug(f'{key_type} key: {key.char} pressed , time: {now}')
                     except AttributeError:
-                        logging.debug(f'{key_type} key: {key} pressed at {now}')
+                        logging.debug(f'{key_type} key: {key} pressed, time: {now}')
         except Exception:
             logging.exception('Exception on press:')
 
@@ -271,11 +272,11 @@ class KeyTrackerPrivate(TrackerBase):
             for key_type, is_key_type in KEY_DICT.KEY_DICT.items():
                 if is_key_type(key):
                     try:
-                        logging.debug(f'{key_type} key: {key.char} released at {now}, duration: {key_press_span}')
+                        logging.debug(f'{key_type} key: {key.char} released, time: {now}, duration: {key_press_span}')
                         self._log_file.write(
                             f'{key_type},NaN,{now},{key_press_span}\n')
                     except AttributeError:
-                        logging.debug(f'{key_type} key: {key} released at {now}, duration: {key_press_span}')
+                        logging.debug(f'{key_type} key: {key} released, time: {now}, duration: {key_press_span}')
                         self._log_file.write(
                             f'{key_type},{key},{now},{key_press_span}\n')
 
@@ -299,12 +300,13 @@ class MouseTracker(TrackerBase):
     """
 
     def __init__(self):
-        super(MouseTracker, self).__init__()
-        self.dev = 'mouse'
-        self.listener = mouse.Listener(
+        _listener = mouse.Listener(
             on_move=self._on_move,
             on_click=self._on_click,
             on_scroll=self._on_scroll)
+        super(MouseTracker, self).__init__(dev='mouse', listener=_listener)
+        self.dev = 'mouse'
+
 
     def _init_log_file(self):
         self._log_file.write('mouse_type,timestamp,x,y,button,press,dx,dy\n')
@@ -313,7 +315,7 @@ class MouseTracker(TrackerBase):
         now = time.time()
         self._lock.acquire()  # guarantee ongoing actions complete
         try:
-            logging.debug(f'move,{now},{x},{y},NaN,NaN,NaN,NaN')
+            logging.debug(f'move, time: {now}, coordinate: ({x}, {y})')
             self._log_file.write(f'move,{now},{x},{y},NaN,NaN,NaN,NaN\n')
         except Exception:
             logging.exception('Exception on move:')
@@ -324,7 +326,7 @@ class MouseTracker(TrackerBase):
         now = time.time()
         self._lock.acquire()  # guarantee ongoing actions complete
         try:
-            logging.debug(f'click,{now},{x},{y},{button},{pressed},NaN,NaN')
+            logging.debug(f'click, time: {now}, coordinate: ({x}, {y}), button: {button}, press: {pressed}')
             self._log_file.write(f'click,{now},{x},{y},{button},{pressed},NaN,NaN\n')
         except Exception:
             logging.exception('Exception on click:')
@@ -335,7 +337,7 @@ class MouseTracker(TrackerBase):
         now = time.time()
         self._lock.acquire()  # guarantee ongoing actions complete
         try:
-            logging.debug(f'scroll,{now},{x},{y},NaN,NaN,{dx},{dy}')
+            logging.debug(f'scroll, time: {now}, coordinate: ({x}, {y}), direction: ({dx},{dy})')
             self._log_file.write(f'scroll,{now},{x},{y},NaN,NaN,{dx},{dy}\n')
         except Exception:
             logging.exception('Exception on scroll:')
