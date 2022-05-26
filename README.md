@@ -1,43 +1,52 @@
-Author: Yijia Chen, Alicia Zeng
+# key_mouse_tracker
 
-# privacy-key-tracker
+Keyboard and mouse trackers that log keyboard/mouse type and time information for the purpose of data analysis.
 
-Key and mouse tracker, privacy guaranteed.
+The trackers log `key_type, key_name, timestamp, duration` for the keyboard and `mouse_type, timestamp, x, y, button, press, dx, dy` for the mouse.
+Privacy guaranteed since all the alphanumeric keys are masked as `NaN`. 
+
+The logs and metadata about the sessions are saved in csv files. Logging sessions are renewed every hour.
 
 # Instructions
 
-First make sure `Python3` is installed on your machine, and so is the following package:
+First make sure `Python3` is installed. Then install `key_mouse_tracker` in editable mode:
+```
+git clone https://github.com/alicialitrtwe/key_mouse_tracker
+cd key_mouse_tracker
+pip install --editable .
+```
 
-- `pynput`
 
-The packages can be installed using `pip3 install <package-name>`.
+After installation, run `track` in the terminal in any directory to start tracking. 
+End tracking with keyboard exception in the terminal any time. Before installation, `python3 run_trackers.py` in the 
+`key_mouse_tracker` directory will start tracking.
 
-Then, in the `key_mouse_tracker` directory, run `python3 run_trackers.py` to start tracking.
+Use `track --log debug` or `python3 run_trackers.py --log debug` for debug mode. Will output in the terminal the key press/release time and
+duration, mouse move/scroll/click time, coordinate and button info.
 
-End tracking with keyboard exception in the terminal any time.
-
-`python3 run_trackers.py --log debug` for debug mode. Will output in the terminal the key press/release time and
-duration, mouse move/scroll/click time and coordinate and button info.
-
-`python3 run_trackers.py --dev mouse` or `python3 run_trackers.py --dev key` if only wants to track one of the devices.
+`track --dev mouse` or `track --dev key` if only wants to track one of the devices.
 Default is 'both'.
 
-# Setup
+# Initial Setup
 
 - First, specify a save directory in config.py. Otherwise, results will be stored in '{device}/outputs' and '
   {device}/metadata' folders in the project directory.
 
+
 - Please modify the LEFT_ALPHANUM and RIGHT_ALPHANUM dictionaries in KEY_DICT.py to align with your typing preferences.
   You can also add dictionaries in KEY_DICT.py if you are interested in tracking additional typing patterns.
 
-- Debug: on first use, run `python3 key_tracker_private.py --log debug`, press every key on the keyboard and mouse and
+
+- Debug: on first use, run `track --log debug`, press every key on the keyboard and mouse and
   check the terminal debug output to make sure the trackers are performing as expected.
-    - Make sure all the common keys are corrected recorded.
+    - Make sure all the common keys are correctly recorded.
     - Make sure the logging sessions renew correctly. In the debug mode, the log file will be renewed every 30 seconds.
       In the default mode, the log file will be renewed every hour. Change the session length by changing '
       SESSION_LENGTH_IN_HOURS'
   
+
 - Privacy: in the log output .csv files, you will find all the alphanumeric keys are masked as `NaN`.
+
 
 - Known problem with some key combinations: i.e. press shift + c and release shift first, and then c. pynput will pick 
   up 'C' press and 'c' release. Might cause key error exception if 'c' has not been added to the '_first_pressed_time' 

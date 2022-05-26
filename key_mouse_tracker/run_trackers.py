@@ -1,9 +1,10 @@
 import argparse
 import logging
+import sys
 import threading
 import time
 
-from Trackers import KeyTrackerPrivate, TrackerBase, MouseTracker
+from key_mouse_tracker.Trackers import KeyTrackerPrivate, TrackerBase, MouseTracker
 
 SECONDS_IN_HOUR = 3600
 
@@ -12,13 +13,13 @@ def run_tracker(tracker: TrackerBase):
     tracker.start()
 
 
-def run_renew_session(tracker: TrackerBase):
+def run_renew_session(tracker: TrackerBase, session_length_in_hours):
     """
     Start cron job for renewing sessions.
     """
     # Using second as unit for counter here because we want to check frequently
     # whether the main thread for tracking has exited.
-    counter_seconds = SESSION_LENGTH_IN_HOURS * SECONDS_IN_HOUR
+    counter_seconds = session_length_in_hours * SECONDS_IN_HOUR
     logging.debug('start renewing session')
     while not tracker.stopped:
         time.sleep(1)
@@ -27,12 +28,11 @@ def run_renew_session(tracker: TrackerBase):
         if counter_seconds <= 0:
             # start new session and reset counter
             tracker.renew_session()
-            counter_seconds = SESSION_LENGTH_IN_HOURS * SECONDS_IN_HOUR
+            counter_seconds = session_length_in_hours * SECONDS_IN_HOUR
     logging.debug('end renewing session')
 
 
-if __name__ == '__main__':
-
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-log',
                         '--loglevel',
@@ -57,12 +57,12 @@ if __name__ == '__main__':
     if args.device in ['key', 'both']:
         key_tracker = KeyTrackerPrivate()
         key_tracker_thread = threading.Thread(target=(lambda: run_tracker(key_tracker)), name='key_tracker')
-        key_session_thread = threading.Thread(target=(lambda: run_renew_session(key_tracker)), name='key_session')
+        key_session_thread = threading.Thread(target=(lambda: run_renew_session(key_tracker, SESSION_LENGTH_IN_HOURS)), name='key_session')
 
     if args.device in ['mouse', 'both']:
         mouse_tracker = MouseTracker()
         mouse_tracker_thread = threading.Thread(target=(lambda: run_tracker(mouse_tracker)), name='mouse_tracker')
-        mouse_session_thread = threading.Thread(target=(lambda: run_renew_session(mouse_tracker)), name='mouse_session')
+        mouse_session_thread = threading.Thread(target=(lambda: run_renew_session(mouse_tracker, SESSION_LENGTH_IN_HOURS)), name='mouse_session')
     try:
         if key_tracker is not None:
             key_tracker_thread.start()
@@ -93,3 +93,7 @@ if __name__ == '__main__':
         print('\n#############')
         print('TRACKING ENDS')
         print('#############\n')
+
+
+if __name__ == '__main__':
+    sys.exit(main())

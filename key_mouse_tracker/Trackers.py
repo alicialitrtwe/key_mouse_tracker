@@ -11,7 +11,7 @@ from pynput import keyboard, mouse
 from pynput.keyboard import Key
 
 import config
-import KEY_DICT
+from key_mouse_tracker import KEY_DICT
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +306,6 @@ class MouseTracker(TrackerBase):
             on_scroll=self._on_scroll)
         super(MouseTracker, self).__init__(dev='mouse', listener=_listener)
         self.dev = 'mouse'
-
 
     def _init_log_file(self):
         self._log_file.write('mouse_type,timestamp,x,y,button,press,dx,dy\n')
