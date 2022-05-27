@@ -93,7 +93,6 @@ def main():
     print('\n#############')
     print('TRACKING ENDS')
     print('#############\n')
-    print(threading.enumerate())
 
 
 if __name__ == '__main__':
