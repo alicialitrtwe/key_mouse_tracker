@@ -90,9 +90,10 @@ def main():
         if mouse_tracker is not None:
             mouse_tracker.stop()
 
-        print('\n#############')
-        print('TRACKING ENDS')
-        print('#############\n')
+    print('\n#############')
+    print('TRACKING ENDS')
+    print('#############\n')
+    print(threading.enumerate())
 
 
 if __name__ == '__main__':

@@ -74,10 +74,10 @@ class TrackerBase(ABC):
         self.metadata_dir = None
         self.logger_dir = None
 
-        if config.SAVE_DIR is not None:
-            self.save_dir = config.SAVE_DIR
+        if config.SAVE_DIR is None:
+            raise ValueError('The save directory has not been specified in config.py')
         else:
-            self.save_dir = os.getcwd()
+            self.save_dir = config.SAVE_DIR
 
     def _get_paths(self):
         """
