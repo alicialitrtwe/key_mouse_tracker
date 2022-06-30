@@ -1,3 +1,6 @@
+2020/06/29 new feature: upload to a remote location automatically using rclone. Dependent on existing rclone setup. 
+Please specify the remote save location in config.py too, along with the local save directory.
+
 # key_mouse_tracker
 
 Keyboard and mouse trackers that log keyboard/mouse type and time information for the purpose of data analysis.
@@ -28,7 +31,7 @@ Default to `both`.
 
 # Initial Setup
 
-- First, specify a save directory for the output logs in config.py.
+- First, specify local and remote save directories for the output logs in config.py.
 
 
 - Please modify the LEFT_ALPHANUM and RIGHT_ALPHANUM dictionaries in KEY_DICT.py to align with your typing preferences.
