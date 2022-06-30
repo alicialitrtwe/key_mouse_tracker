@@ -1,2 +1,3 @@
 # Directory to save the outputs
-SAVE_DIR = None
+LOCAL_SAVE_DIR = '/Users/Alicia/Downloads'
+REMOTE_SAVE_DIR = 'lab:/glab-litrtwe/keylogger_test/'

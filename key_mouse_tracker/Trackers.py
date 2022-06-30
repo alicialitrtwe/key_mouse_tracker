@@ -3,9 +3,9 @@ import os
 import subprocess
 import threading
 import time
+from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict
-from abc import ABC, abstractmethod
 
 from pynput import keyboard, mouse
 from pynput.keyboard import Key
@@ -38,8 +38,10 @@ class TrackerBase(ABC):
         The date and time at which the current session ends
     stopped : bool
         Whether the tracker has been stopped
-    save_dir: str
-        current directory or use specified in config.py
+    local_save_dir: str
+        specified in config.py
+    remote_save_dir: str
+        specified in config.py
     logger_dir : str
         dir to store output logger files
     metadata_dir : str
@@ -74,19 +76,20 @@ class TrackerBase(ABC):
         self.metadata_dir = None
         self.logger_dir = None
 
-        if config.SAVE_DIR is None:
-            raise ValueError('The save directory has not been specified in config.py')
+        if config.LOCAL_SAVE_DIR is None or config.REMOTE_SAVE_DIR is None:
+            raise ValueError('The save and remote directories have not been specified in config.py')
         else:
-            self.save_dir = config.SAVE_DIR
+            self.local_save_dir = config.LOCAL_SAVE_DIR
+            self.remote_save_dir = config.REMOTE_SAVE_DIR
 
     def _get_paths(self):
         """
         get the paths for saving outputs and meta info. create directories if they don't already exist
         """
-        self.logger_dir = os.path.join(self.save_dir, f'{self.dev}/outputs')
-        self.metadata_dir = os.path.join(self.save_dir, f'{self.dev}/metadata')
-        if not os.path.exists(os.path.join(self.save_dir, self.dev)):
-            os.makedirs(os.path.join(self.save_dir, self.dev), exist_ok=False)
+        self.logger_dir = os.path.join(self.local_save_dir, f'{self.dev}/outputs')
+        self.metadata_dir = os.path.join(self.local_save_dir, f'{self.dev}/metadata')
+        if not os.path.exists(os.path.join(self.local_save_dir, self.dev)):
+            os.makedirs(os.path.join(self.local_save_dir, self.dev), exist_ok=False)
         if not os.path.exists(self.logger_dir):
             os.mkdir(self.logger_dir)
         if not os.path.exists(self.metadata_dir):
@@ -153,11 +156,18 @@ class TrackerBase(ABC):
     def stop(self):
         """
         Stops tracking: close the meta info file and stop the listener.
+        upload the local outputs and metadata log to the cloud.
         """
         self._end_session()
         self._meta_file.close()
         self.listener.stop()
         self.stopped = True
+        print(f'{self.dev}: uploading log files...')
+        for log_type in ['outputs', 'metadata']:
+            source_dir = os.path.join(self.local_save_dir, self.dev, log_type, self._start_date)
+            target_dir = os.path.join(self.remote_save_dir, self.dev, log_type, self._start_date)
+            subprocess.run(['rclone', 'copy', source_dir, target_dir])
+        print(f'{self.dev}: upload complete!')
 
     def renew_session(self):
         """
@@ -165,7 +175,7 @@ class TrackerBase(ABC):
         """
 
         print('\n###################')
-        print(f'NEW {self.dev} LOGGER SESSION ENTERED')
+        print(f'NEW {self.dev.upper()} LOGGER SESSION ENTERED')
         print('###################\n')
 
         self._lock.acquire()  # to avoid collision with a key press or release
@@ -243,7 +253,7 @@ class KeyTrackerPrivate(TrackerBase):
                     except AttributeError:
                         logging.debug(f'{key_type} key: {key} pressed, time: {now}')
         except Exception:
-            logging.exception('Exception on press:')
+            logging.exception('Exception on press:', exc_info=True)
 
         finally:
             self._lock.release()
@@ -317,7 +327,7 @@ class MouseTracker(TrackerBase):
             logging.debug(f'move, time: {now}, coordinate: ({x}, {y})')
             self._log_file.write(f'move,{now},{x},{y},NaN,NaN,NaN,NaN\n')
         except Exception:
-            logging.exception('Exception on move:')
+            logging.exception('Exception on move:', exc_info=True)
         finally:
             self._lock.release()
 
@@ -328,7 +338,7 @@ class MouseTracker(TrackerBase):
             logging.debug(f'click, time: {now}, coordinate: ({x}, {y}), button: {button}, press: {pressed}')
             self._log_file.write(f'click,{now},{x},{y},{button},{pressed},NaN,NaN\n')
         except Exception:
-            logging.exception('Exception on click:')
+            logging.exception('Exception on click:', exc_info=True)
         finally:
             self._lock.release()
 
@@ -339,6 +349,6 @@ class MouseTracker(TrackerBase):
             logging.debug(f'scroll, time: {now}, coordinate: ({x}, {y}), direction: ({dx},{dy})')
             self._log_file.write(f'scroll,{now},{x},{y},NaN,NaN,{dx},{dy}\n')
         except Exception:
-            logging.exception('Exception on scroll:')
+            logging.exception('Exception on scroll:', exc_info=True)
         finally:
             self._lock.release()

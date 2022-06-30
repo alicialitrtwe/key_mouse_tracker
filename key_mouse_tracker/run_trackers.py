@@ -20,7 +20,7 @@ def run_renew_session(tracker: TrackerBase, session_length_in_hours):
     # Using second as unit for counter here because we want to check frequently
     # whether the main thread for tracking has exited.
     counter_seconds = session_length_in_hours * SECONDS_IN_HOUR
-    logging.debug('start renewing session')
+    logging.debug(f'{tracker.dev}: start renewing session')
     while not tracker.stopped:
         time.sleep(1)
         counter_seconds -= 1
@@ -29,7 +29,7 @@ def run_renew_session(tracker: TrackerBase, session_length_in_hours):
             # start new session and reset counter
             tracker.renew_session()
             counter_seconds = session_length_in_hours * SECONDS_IN_HOUR
-    logging.debug('end renewing session')
+    logging.debug(f'{tracker.dev}: end renewing session')
 
 
 def main():
@@ -57,12 +57,14 @@ def main():
     if args.device in ['key', 'both']:
         key_tracker = KeyTrackerPrivate()
         key_tracker_thread = threading.Thread(target=(lambda: run_tracker(key_tracker)), name='key_tracker')
-        key_session_thread = threading.Thread(target=(lambda: run_renew_session(key_tracker, SESSION_LENGTH_IN_HOURS)), name='key_session')
+        key_session_thread = threading.Thread(target=(lambda: run_renew_session(key_tracker, SESSION_LENGTH_IN_HOURS)),
+                                              name='key_session')
 
     if args.device in ['mouse', 'both']:
         mouse_tracker = MouseTracker()
         mouse_tracker_thread = threading.Thread(target=(lambda: run_tracker(mouse_tracker)), name='mouse_tracker')
-        mouse_session_thread = threading.Thread(target=(lambda: run_renew_session(mouse_tracker, SESSION_LENGTH_IN_HOURS)), name='mouse_session')
+        mouse_session_thread = threading.Thread(
+            target=(lambda: run_renew_session(mouse_tracker, SESSION_LENGTH_IN_HOURS)), name='mouse_session')
     try:
         if key_tracker is not None:
             key_tracker_thread.start()
@@ -85,6 +87,7 @@ def main():
             mouse_session_thread.join()
 
     except KeyboardInterrupt:
+        print('exiting loggers...')
         if key_tracker is not None:
             key_tracker.stop()
         if mouse_tracker is not None:
