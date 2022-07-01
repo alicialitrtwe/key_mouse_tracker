@@ -11,7 +11,7 @@ from pynput import keyboard, mouse
 from pynput.keyboard import Key
 
 import config
-from key_mouse_tracker import KEY_DICT
+from src.key_mouse_tracker import KEY_DICT
 
 logger = logging.getLogger(__name__)
 
