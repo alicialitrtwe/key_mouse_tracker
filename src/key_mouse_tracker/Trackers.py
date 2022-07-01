@@ -10,8 +10,7 @@ from typing import Dict
 from pynput import keyboard, mouse
 from pynput.keyboard import Key
 
-import config
-from src.key_mouse_tracker import KEY_DICT
+from . import KEY_DICT, config
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class TrackerBase(ABC):
     _end_time : str
         The time at which the current session ends
     _start_date : str
-        The date at which the current session starts
+        The date at which the current session starts, e.g. 20220630
     _start_datetime : str
         The date and time at which the current session starts
     _end_datetime : str
@@ -102,7 +101,7 @@ class TrackerBase(ABC):
 
         self._start_time = time.time()
         self._start_datetime = datetime.fromtimestamp(self._start_time).strftime('%Y-%m-%d_%H-%M-%S')
-        self._start_date = self._start_datetime.split('_')[0]
+        self._start_date = self._start_datetime.split('_')[0].replace("-", "")
 
         if not os.path.exists(os.path.join(self.logger_dir, self._start_date)):
             os.mkdir(os.path.join(self.logger_dir, self._start_date))

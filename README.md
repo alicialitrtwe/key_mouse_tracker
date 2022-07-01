@@ -1,5 +1,8 @@
-2020/06/29 new feature: upload to a remote location automatically using rclone. Dependent on existing rclone setup. 
-Please specify the remote save location in config.py too, along with the local save directory.
+2020/06/29 new feature: upload to a remote location using rclone. Dependent on existing rclone setup. 
+Please specify the remote save location in config.py, along with the local save directory. When tracking stops, 
+the program will first save all files for the tracking period in the local directory, and then upload them to the remote save location.
+Use keyboard interruption `ctrl + c` once to stop tracking and start uploading. Please wait until 'upload complete' to exit terminal.
+
 
 # key_mouse_tracker
 

@@ -4,7 +4,7 @@ import sys
 import threading
 import time
 
-from src.key_mouse_tracker.Trackers import KeyTrackerPrivate, TrackerBase, MouseTracker
+from .Trackers import KeyTrackerPrivate, TrackerBase, MouseTracker
 
 SECONDS_IN_HOUR = 3600
 
