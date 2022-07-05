@@ -1,3 +1,3 @@
 # Directory to save the outputs
-LOCAL_SAVE_DIR = '/Users/Alicia/Downloads'
-REMOTE_SAVE_DIR = 'lab:/glab-litrtwe/keylogger_test/'
+LOCAL_SAVE_DIR = None
+REMOTE_SAVE_DIR = 'patient_wasabi:/weill-video/RCS07_video/patient_personal_computer/'
