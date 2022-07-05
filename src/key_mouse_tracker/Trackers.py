@@ -106,8 +106,9 @@ class TrackerBase(ABC):
                                       f'{self.dev}_meta_{self._start_date}.csv')
         if self.git_hash is None:
             self.get_git_revision_short_hash()
-        with open(meta_file_path, 'w+') as self._meta_file:
-        # write session summary
+        with open(meta_file_path, 'a') as self._meta_file:
+            if self._meta_file.tell() == 0:
+                self._meta_file.write('start_time,end_time,duration,git_hash\n')
             self._meta_file.write(
             f'{self._start_datetime},{self._end_datetime},{self._end_time - self._start_time},{self.git_hash}\n')
 
@@ -115,7 +116,6 @@ class TrackerBase(ABC):
         self.git_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
                                            cwd=os.path.dirname(os.path.abspath(__file__))).decode('ascii').strip()
         return self.git_hash
-
 
     def upload(self):
         print(f'{self.dev}: upload log files...')
@@ -152,6 +152,7 @@ class TrackerBase(ABC):
         self._meta_file.close()
         self.listener.stop()
         self.stopped = True
+        # upload when renewing or stopping
         self.upload()
 
     def renew_session(self):
@@ -171,6 +172,7 @@ class TrackerBase(ABC):
 
         finally:
             self._lock.release()
+        # upload when renewing or stopping
         self.upload()
 
 
