@@ -41,10 +41,8 @@ class TrackerBase(ABC):
         specified in config.py
     remote_save_dir: str
         specified in config.py
-    logger_dir : str
-        dir to store output logger files
-    metadata_dir : str
-        dir to store meta files
+    git_hash: str
+        git hash of the repository
     _log_file : TextIOWrapper
         The file of designated log output, opened with overwrite permission
     _meta_file : TextIOWrapper
@@ -69,30 +67,16 @@ class TrackerBase(ABC):
         self.dev = dev
         self.listener = listener
         self.stopped = None
+        self.git_hash = None
         self._lock = threading.Lock()
         self._meta_file = None
         self._log_file = None
-        self.metadata_dir = None
-        self.logger_dir = None
 
         if config.LOCAL_SAVE_DIR is None or config.REMOTE_SAVE_DIR is None:
             raise ValueError('The save and remote directories have not been specified in config.py')
         else:
             self.local_save_dir = config.LOCAL_SAVE_DIR
             self.remote_save_dir = config.REMOTE_SAVE_DIR
-
-    def _get_paths(self):
-        """
-        get the paths for saving outputs and meta info. create directories if they don't already exist
-        """
-        self.logger_dir = os.path.join(self.local_save_dir, f'{self.dev}/outputs')
-        self.metadata_dir = os.path.join(self.local_save_dir, f'{self.dev}/metadata')
-        if not os.path.exists(os.path.join(self.local_save_dir, self.dev)):
-            os.makedirs(os.path.join(self.local_save_dir, self.dev), exist_ok=False)
-        if not os.path.exists(self.logger_dir):
-            os.mkdir(self.logger_dir)
-        if not os.path.exists(self.metadata_dir):
-            os.mkdir(self.metadata_dir)
 
     def _start_session(self):
         """
@@ -102,10 +86,11 @@ class TrackerBase(ABC):
         self._start_time = time.time()
         self._start_datetime = datetime.fromtimestamp(self._start_time).strftime('%Y-%m-%d_%H-%M-%S')
         self._start_date = self._start_datetime.split('_')[0].replace("-", "")
-
-        if not os.path.exists(os.path.join(self.logger_dir, self._start_date)):
-            os.mkdir(os.path.join(self.logger_dir, self._start_date))
-        log_file_path = os.path.join(self.logger_dir, self._start_date, f'{self.dev}_logger_{self._start_datetime}.csv')
+        if not os.path.exists(os.path.join(self.local_save_dir, self.dev, self._start_date)):
+            os.mkdir(os.path.join(self.local_save_dir, self.dev, self._start_date))
+            os.mkdir(os.path.join(self.local_save_dir, self.dev, self._start_date, 'meta'))
+            os.mkdir(os.path.join(self.local_save_dir, self.dev, self._start_date, 'log'))
+        log_file_path = os.path.join(self.local_save_dir, self.dev, self._start_date, 'log', f'{self.dev}_log_{self._start_datetime}.csv')
         self._log_file = open(log_file_path, 'w+')
         self._init_log_file()
 
@@ -117,10 +102,27 @@ class TrackerBase(ABC):
         self._log_file.close()
         self._end_time = time.time()
         self._end_datetime = datetime.fromtimestamp(self._end_time).strftime('%Y-%m-%d_%H-%M-%S')
-
+        meta_file_path = os.path.join(self.local_save_dir, self.dev, self._start_date, 'meta',
+                                      f'{self.dev}_meta_{self._start_date}.csv')
+        if self.git_hash is None:
+            self.get_git_revision_short_hash()
+        with open(meta_file_path, 'w+') as self._meta_file:
         # write session summary
-        self._meta_file.write(
-            f'{self._start_datetime},{self._end_datetime},{self._end_time - self._start_time}\n')
+            self._meta_file.write(
+            f'{self._start_datetime},{self._end_datetime},{self._end_time - self._start_time},{self.git_hash}\n')
+
+    def get_git_revision_short_hash(self) -> str:
+        self.git_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
+                                           cwd=os.path.dirname(os.path.abspath(__file__))).decode('ascii').strip()
+        return self.git_hash
+
+
+    def upload(self):
+        print(f'{self.dev}: upload log files...')
+        source_dir = os.path.join(self.local_save_dir, self.dev, self._start_date)
+        target_dir = os.path.join(self.remote_save_dir, self.dev, self._start_date)
+        subprocess.run(['rclone', 'copy', source_dir, target_dir])
+        print(f'{self.dev}: upload complete!')
 
     @abstractmethod
     def _init_log_file(self):
@@ -135,20 +137,9 @@ class TrackerBase(ABC):
         """
 
         self.stopped = False
-        self._get_paths()
+        if not os.path.exists(os.path.join(self.local_save_dir, self.dev)):
+            os.makedirs(os.path.join(self.local_save_dir, self.dev), exist_ok=False)
         self._start_session()
-        if not os.path.exists(os.path.join(self.metadata_dir, self._start_date)):
-            os.mkdir(os.path.join(self.metadata_dir, self._start_date))
-        meta_file_path = os.path.join(self.metadata_dir, self._start_date,
-                                      f'{self.dev}_meta_{self._start_datetime}.csv')
-        self._meta_file = open(meta_file_path, 'w+')
-
-        def get_git_revision_short_hash() -> str:
-            return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
-                                           cwd=os.path.dirname(os.path.abspath(__file__))).decode('ascii').strip()
-
-        self._meta_file.write(f'git_hash\n{get_git_revision_short_hash()}\n')
-        self._meta_file.write('session_start,session_end,session_duration\n')
         self.listener.start()
         self.listener.join()
 
@@ -161,12 +152,7 @@ class TrackerBase(ABC):
         self._meta_file.close()
         self.listener.stop()
         self.stopped = True
-        print(f'{self.dev}: uploading log files...')
-        for log_type in ['outputs', 'metadata']:
-            source_dir = os.path.join(self.local_save_dir, self.dev, log_type, self._start_date)
-            target_dir = os.path.join(self.remote_save_dir, self.dev, log_type, self._start_date)
-            subprocess.run(['rclone', 'copy', source_dir, target_dir])
-        print(f'{self.dev}: upload complete!')
+        self.upload()
 
     def renew_session(self):
         """
@@ -185,6 +171,7 @@ class TrackerBase(ABC):
 
         finally:
             self._lock.release()
+        self.upload()
 
 
 class KeyTrackerPrivate(TrackerBase):

@@ -48,7 +48,7 @@ def main():
     # Number of hours for each session's length.
     # set to be 30 sec for debugging; change to 1 hr when tracking
     if args.loglevel.upper() == 'DEBUG':
-        SESSION_LENGTH_IN_HOURS = 1 / 120
+        SESSION_LENGTH_IN_HOURS = 1 / 360
     else:
         SESSION_LENGTH_IN_HOURS = 1
 
